@@ -1,0 +1,18 @@
+services:
+  web:
+    build: .
+    restart: unless-stopped
+    environment:
+      # Next binds to localhost without HOSTNAME, and Traefik then 404s.
+      HOSTNAME: "0.0.0.0"
+      PORT: "3000"
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      BOT_MODEL: ${BOT_MODEL}
+      BOT_EFFORT: ${BOT_EFFORT}
+      DATABASE_URL: ${DATABASE_URL}
+      WAPI_BASE_URL: ${WAPI_BASE_URL}
+      WAPI_API_KEY: ${WAPI_API_KEY}
+      WAPI_WEBHOOK_SECRET: ${WAPI_WEBHOOK_SECRET}
+      BOT_REPLY_TO_DMS: ${BOT_REPLY_TO_DMS}
+    expose:
+      - "3000"

@@ -1,0 +1,31 @@
+{
+  "name": "wspbot",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A WhatsApp bot that answers when tagged — searches the web and remembers what you tell it.",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "smoke": "tsx scripts/smoke.ts"
+  },
+  "dependencies": {
+    "@ai-sdk/openai": "^4.0.46",
+    "ai": "^7.0.77",
+    "next": "^16.3.2",
+    "pg": "^8.23.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "server-only": "^0.0.1",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/pg": "^8.15.6",
+    "@types/react": "^19.2.8",
+    "@types/react-dom": "^19.2.8",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

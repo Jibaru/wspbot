@@ -1,0 +1,137 @@
+:root {
+  --bg: #fbfbfa;
+  --panel: #ffffff;
+  --line: #e6e5e1;
+  --text: #1b1b19;
+  --muted: #6f6d66;
+  --accent: #1f7a4d;
+  --warn: #a8560f;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #161613;
+    --panel: #1e1e1b;
+    --line: #302f2b;
+    --text: #edece7;
+    --muted: #918e86;
+    --accent: #52c48a;
+    --warn: #e0a86a;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 3rem 1.5rem 5rem;
+  background: var(--bg);
+  color: var(--text);
+  font: 15px/1.6 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+main {
+  max-width: 44rem;
+  margin: 0 auto;
+}
+
+h1 {
+  font-size: 1.4rem;
+  margin: 0 0 0.25rem;
+  letter-spacing: -0.01em;
+}
+
+h2 {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  margin: 2.5rem 0 0.75rem;
+  font-weight: 600;
+}
+
+.lede {
+  color: var(--muted);
+  margin: 0 0 2rem;
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 1rem 1.15rem;
+}
+
+.row {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.row:last-child {
+  border-bottom: 0;
+}
+
+.row dt {
+  color: var(--muted);
+  margin: 0;
+}
+
+.row dd {
+  margin: 0;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+dl {
+  margin: 0;
+}
+
+.ok {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.bad {
+  color: var(--warn);
+  font-weight: 600;
+}
+
+ul.memories {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+ul.memories li {
+  padding: 0.6rem 0;
+  border-bottom: 1px solid var(--line);
+}
+
+ul.memories li:last-child {
+  border-bottom: 0;
+}
+
+.meta {
+  display: block;
+  color: var(--muted);
+  font-size: 0.8rem;
+  margin-top: 0.15rem;
+}
+
+code {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.86em;
+  background: color-mix(in srgb, var(--line) 55%, transparent);
+  padding: 0.1em 0.35em;
+  border-radius: 4px;
+}
+
+.empty {
+  color: var(--muted);
+}

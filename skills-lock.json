@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "wapi-nextjs": {
+      "source": "crafter-station/wapi",
+      "sourceType": "github",
+      "skillPath": ".claude/skills/wapi-nextjs/SKILL.md",
+      "computedHash": "c51d6528767c0ac5159a00b5cab766c7a5c963532ec9f073b7d571ba83bb892e"
+    }
+  }
+}

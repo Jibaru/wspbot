@@ -87,12 +87,22 @@ check(
   false,
 );
 
-console.log("\nrouting:");
+console.log("\nrouting (groups only — the shipped default):");
 for (const [label, data, want] of [
   ["group + tagged", groupTagged, true],
   ["group, no tag", groupUntagged, false],
   ["group, reply to bot", groupReplyToBot, true],
-  ["dm (ephemeral wrapper)", dmEphemeral, true],
+  ["dm ignored", dmEphemeral, false],
+] as const) {
+  const parsed = mentions.parse(data as unknown as Record<string, unknown>);
+  check(label, parsed ? mentions.shouldReply(parsed, identity, false) : null, want);
+}
+
+console.log("\nrouting (BOT_REPLY_TO_DMS=true):");
+for (const [label, data, want] of [
+  ["dm answered", dmEphemeral, true],
+  // A group still needs a tag — the DM switch must not open groups up.
+  ["group, no tag, still ignored", groupUntagged, false],
 ] as const) {
   const parsed = mentions.parse(data as unknown as Record<string, unknown>);
   check(label, parsed ? mentions.shouldReply(parsed, identity, true) : null, want);

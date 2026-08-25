@@ -76,8 +76,9 @@ same way. This is the only reason a tunnel ever enters the picture — deployed,
 
 ## When it replies
 
-- **Direct messages** — always. Set `BOT_REPLY_TO_DMS=false` to stop that.
-- **Groups** — only when `@`-tagged, or when someone replies to one of its messages.
+- **Groups** — when `@`-tagged, or when someone replies to one of its messages.
+- **Direct messages** — ignored. A one-to-one chat has no tagging convention, so answering
+  there means answering everything sent to it. Set `BOT_REPLY_TO_DMS=true` if you want that.
 
 Tags are matched against both spellings of the bot's identity: its phone JID and its LID.
 WhatsApp increasingly addresses people by LID, and a LID is not derivable from a phone number,
@@ -137,7 +138,7 @@ insert into memories (chat, text) values ('global', 'the office wifi password is
 | --- | --- | --- |
 | `BOT_MODEL` | `gpt-5.6` | Any model your account can reach on the Responses API. |
 | `BOT_EFFORT` | `low` | Reasoning depth. Raise it if answers feel shallow, at the cost of latency. |
-| `BOT_REPLY_TO_DMS` | `true` | Groups always require a tag regardless. |
+| `BOT_REPLY_TO_DMS` | `false` | Answer one-to-one chats too. Groups always require a tag regardless. |
 
 Replies are requested at low verbosity — a WhatsApp message that needs scrolling has already
 failed. The bot's manners live in the system prompt in `lib/agent.ts`.

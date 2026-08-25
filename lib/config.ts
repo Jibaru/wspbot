@@ -25,5 +25,9 @@ export const config = {
   /** Reasoning depth. Low keeps a chat bot snappy; raise it if answers feel shallow. */
   effort: () => optional("BOT_EFFORT") ?? "low",
 
-  replyToDms: () => (optional("BOT_REPLY_TO_DMS") ?? "true") !== "false",
+  /**
+   * Off by default: the bot is a group tool, and a one-to-one chat has no tagging convention to
+   * signal when it is wanted, so it would answer everything anyone sent it.
+   */
+  replyToDms: () => (optional("BOT_REPLY_TO_DMS") ?? "false") === "true",
 };

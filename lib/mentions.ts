@@ -128,8 +128,8 @@ export const isTagged = (message: Inbound, identity: string[]): boolean => {
 };
 
 /**
- * Groups require a tag; DMs are a conversation with us by definition, so they are answered
- * unless that is switched off.
+ * Groups require a tag. Direct chats are ignored unless explicitly switched on — there is no
+ * tagging convention in a one-to-one chat, so answering there means answering everything.
  */
 export const shouldReply = (
   message: Inbound,

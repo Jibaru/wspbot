@@ -111,10 +111,17 @@ async function handle({ event, data }: WebhookBody): Promise<void> {
     text: text || "(no text)",
   });
 
-  // Mentioning the sender makes the reply notify them in a busy group.
-  await wapi.sendText(message.chat, answer, {
-    ...(message.isGroup ? { mentions: [message.sender] } : {}),
-  });
+  /**
+   * The sending tools deliver as they run, so a turn can be complete with no text left to send
+   * — a poll on its own, for instance. Sending an empty string here would be a stray blank
+   * message on top of it.
+   */
+  if (answer.text) {
+    // Mentioning the sender makes the reply notify them in a busy group.
+    await wapi.sendText(message.chat, answer.text, {
+      ...(message.isGroup ? { mentions: [message.sender] } : {}),
+    });
+  }
 }
 
 /** A browser hitting the URL should get something friendlier than a 405. */

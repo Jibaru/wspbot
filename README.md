@@ -85,6 +85,34 @@ so both are checked rather than converted.
 
 Everything else is dropped silently, which is what makes it tolerable in a busy group.
 
+## What it can put in the chat
+
+Beyond text, the bot decides for itself when one of these fits — you just ask in plain language.
+
+| Ask it something like | What happens |
+| --- | --- |
+| "send me the PDF of that paper" | finds the file and sends it as a document, properly named |
+| "show me a photo of the venue" | sends an image with a short caption |
+| "read that out" / "send it as audio" | generates speech and sends a voice note |
+| "let's vote on Friday or Saturday" | posts a WhatsApp poll people can tap |
+| "link me the docs" | sends a bare URL, which WhatsApp expands into a preview |
+
+Notes on each:
+
+- **Files, images, video, PDFs** go out by URL — the bot sends a link it actually found, and is
+  told never to invent one. Documents always carry a filename, because a document without one
+  arrives named after its URL.
+- **Voice notes** are generated with OpenAI TTS, uploaded to wapi for a permanent URL, then
+  sent. Six voices are available and the bot can be asked for a delivery style ("warm and
+  unhurried"). mp3 rather than opus, because every WhatsApp client plays it.
+- **Polls** take 2–12 options and can allow multiple choices. Duplicate options are removed
+  first — WhatsApp drops them silently, which would quietly turn a 3-option poll into 2.
+- When a tool has already put something in the chat, the bot sends at most one short line after
+  it, and often nothing. A poll on its own is a complete answer.
+
+If a send fails, the error goes back to the model rather than being thrown, so it can tell you
+what went wrong or try a different source instead of the turn dying silently.
+
 ## Memory
 
 Facts are scoped to the chat they were told in — the bot sits in shared rooms, and something

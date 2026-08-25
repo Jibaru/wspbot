@@ -70,6 +70,25 @@ const unwrap = <T>(body: Envelope): T => (body.data as T) ?? (body as T);
 
 export type SendResult = { msgId: number; jid: string; status: string };
 
+/**
+ * One endpoint sends every message type; the field you set decides which.
+ *
+ * Typed as a union rather than an object of optionals so that setting two content fields is a
+ * compile error, matching the server, which rejects it rather than silently preferring one.
+ */
+export type SendMessageInput = { to: string; mentions?: string[] } & (
+  | { text: string }
+  | { imageUrl: string; text?: string }
+  | { videoUrl: string; text?: string }
+  | { audioUrl: string }
+  // `fileName` is optional server-side; required here because a document without one
+  // arrives named after its URL, which is never what anyone wants.
+  | { documentUrl: string; fileName: string; text?: string }
+  | { stickerUrl: string }
+  | { poll: { question: string; options: string[]; multiSelect?: boolean } }
+  | { location: { latitude: number; longitude: number; name?: string; address?: string } }
+);
+
 /** The WhatsApp identity behind the session key. `id` is a JID, `lid` the newer LID form. */
 export type WapiUser = { id: string; name: string | null; lid: string | null };
 
@@ -113,6 +132,34 @@ export const wapi = {
         body: JSON.stringify({ to, text, ...opts }),
       }),
     );
+  },
+
+  /** The general form. `sendText` is the common case; this covers media, polls and locations. */
+  async send(input: SendMessageInput): Promise<SendResult> {
+    return unwrap<SendResult>(
+      await request("/api/send-message", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    );
+  },
+
+  /**
+   * Upload bytes and get a permanent URL to pass back to `send`.
+   *
+   * `publicUrl` sits at the top level, not under `data`. The link does not expire, which is
+   * what makes it usable as a send input afterwards.
+   */
+  async upload(file: {
+    base64: string;
+    mimetype: string;
+    fileName?: string;
+  }): Promise<string> {
+    const body = await request("/api/upload", {
+      method: "POST",
+      body: JSON.stringify(file),
+    });
+    return body["publicUrl"] as string;
   },
 
   /** Blue ticks. Best-effort — a failure here must never stop a reply. */

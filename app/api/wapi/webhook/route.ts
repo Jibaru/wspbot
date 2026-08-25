@@ -72,13 +72,22 @@ export async function POST(req: Request) {
 }
 
 async function handle({ event, data }: WebhookBody): Promise<void> {
+  /**
+   * Connection changes. Subscribing to this is the only way to see *why* a session dropped —
+   * wapi reports the reason here, and nothing in the REST API exposes it after the fact.
+   */
+  if (event === "session.status") {
+    console.log("[wapi] session.status", JSON.stringify(data));
+    return;
+  }
+
   // Events are added over time; an unknown one must not fail the delivery.
   if (event !== "messages.received") return;
 
   const message = mentions.parse(data);
   if (!message) return;
 
-  const me = await wapi.me();
+  const me = await wapi.meCached();
   const identity = mentions.identityOf(me);
 
   if (!mentions.shouldReply(message, identity, config.replyToDms())) return;

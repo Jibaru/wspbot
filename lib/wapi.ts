@@ -73,6 +73,10 @@ export type SendResult = { msgId: number; jid: string; status: string };
 /** The WhatsApp identity behind the session key. `id` is a JID, `lid` the newer LID form. */
 export type WapiUser = { id: string; name: string | null; lid: string | null };
 
+/** Identity changes only when the session is relinked, so an hour is comfortably safe. */
+const IDENTITY_TTL_MS = 60 * 60 * 1000;
+let cachedUser: { user: WapiUser; at: number } | undefined;
+
 export const wapi = {
   /** Bare `{status}` — this one has no `success` key at all. */
   async status(): Promise<string> {
@@ -81,6 +85,21 @@ export const wapi = {
 
   async me(): Promise<WapiUser> {
     return unwrap<WapiUser>(await request("/api/user"));
+  },
+
+  /**
+   * The session's own identity, cached.
+   *
+   * Every inbound message needs this to answer "was I tagged?", but it only changes when the
+   * session is relinked to a different number. Fetching it per message put one wapi call on
+   * every message in every group the bot sits in, including the ones it ignores.
+   */
+  async meCached(): Promise<WapiUser> {
+    const now = Date.now();
+    if (cachedUser && now - cachedUser.at < IDENTITY_TTL_MS) return cachedUser.user;
+    const user = await wapi.me();
+    cachedUser = { user, at: now };
+    return user;
   },
 
   async sendText(

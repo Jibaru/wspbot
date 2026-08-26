@@ -11,6 +11,68 @@ import * as usage from "@/lib/usage";
 
 export const dynamic = "force-dynamic";
 
+/**
+ * Written for whoever opens this page, not for the model — the bot's own account of itself
+ * lives in `lib/about.ts`. Phrased as what someone can ask for, since that is how it is used.
+ */
+const FEATURES: { title: string; detail: string }[] = [
+  {
+    title: "Answers when tagged",
+    detail:
+      "In groups only, when @-mentioned or when you reply to one of its messages. Direct chats are ignored, and so is everything else.",
+  },
+  {
+    title: "Searches the web",
+    detail:
+      "For anything current or specific enough that being wrong would matter — not for things it already knows.",
+  },
+  {
+    title: "Remembers",
+    detail:
+      "“Record that…” keeps a fact for the chat; some facts can be saved for every chat. Both survive restarts, and “forget that” removes them.",
+  },
+  {
+    title: "Sends files",
+    detail: "Images, video, PDFs and other documents, found by searching or from a link you give it.",
+  },
+  {
+    title: "Speaks",
+    detail:
+      "Generates a voice note when something is easier to hear than to read, or when you ask it to read something out.",
+  },
+  {
+    title: "Runs polls",
+    detail: "Puts a WhatsApp poll in the chat, two to twelve options, single or multiple choice.",
+  },
+  {
+    title: "Collects stickers",
+    detail:
+      "Every sticker sent in any chat it is in is kept, silently and without replying. One shared library, described automatically so it can be found later.",
+  },
+  {
+    title: "Makes stickers",
+    detail:
+      "Tag it with an image, GIF or short video, or give it a GIF link. Animation is preserved.",
+  },
+  {
+    title: "Names stickers",
+    detail: "Tell it what one should be called and it can be asked for by that name afterwards.",
+  },
+  {
+    title: "Reports its usage",
+    detail: "Tokens and estimated spend for today, the last week and all time.",
+  },
+  {
+    title: "Knows what it is",
+    detail: "Ask how it works, what it runs on, or who built it, and it answers from fact.",
+  },
+  {
+    title: "Reconnects itself",
+    detail:
+      "Watches its own WhatsApp session and brings it back when it drops, so a restart underneath it goes unnoticed.",
+  },
+];
+
 const settle = async <T,>(p: Promise<T>): Promise<T | null> =>
   p.catch(() => null);
 
@@ -82,6 +144,18 @@ export default async function Page() {
             : "Link the phone from the wapi dashboard, then reload."}
         </p>
       )}
+
+      <h2>What it can do</h2>
+      <div className="panel">
+        <ul className="features">
+          {FEATURES.map((f) => (
+            <li key={f.title}>
+              <strong>{f.title}</strong>
+              <span>{f.detail}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
 
       <h2>Usage</h2>
       <div className="panel">

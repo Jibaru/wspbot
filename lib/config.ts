@@ -27,6 +27,19 @@ export const config = {
 
   databaseUrl: () => required("DATABASE_URL"),
 
+  /** Where this app is reachable, used to build the Notion OAuth redirect. */
+  appUrl: () => (optional("APP_URL") ?? "https://wspbot.crafter.run").replace(/\/$/, ""),
+
+  /**
+   * Notion is optional. With no credentials the Notion tools are not offered at all, rather
+   * than being offered and failing — a tool that cannot work is worse than one that is absent.
+   */
+  notion: (): { clientId: string; clientSecret: string } | null => {
+    const clientId = optional("NOTION_CLIENT_ID");
+    const clientSecret = optional("NOTION_CLIENT_SECRET");
+    return clientId && clientSecret ? { clientId, clientSecret } : null;
+  },
+
   /** Any model your account can reach on the OpenAI Responses API. */
   model: () => optional("BOT_MODEL") ?? "gpt-5.6",
 

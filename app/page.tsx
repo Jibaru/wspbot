@@ -69,6 +69,11 @@ const FEATURES: { title: string; detail: string }[] = [
     detail: "Tell it what one should be called and it can be asked for by that name afterwards.",
   },
   {
+    title: "Connects to Notion",
+    detail:
+      "Ask it to connect and it sends a link. You choose which pages it may reach; after that it can search, read, add notes and create pages there.",
+  },
+  {
     title: "Reports its usage",
     detail: "Tokens and estimated spend for today, the last week and all time.",
   },

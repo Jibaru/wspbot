@@ -131,6 +131,8 @@ Beyond text, the bot decides for itself when one of these fits — you just ask 
 | *(photo or GIF attached)* "@bot" | turns it into a sticker, animation intact, and keeps it |
 | *(replying to a photo)* "@bot what is this?" | reads the replied-to message, and looks at its picture |
 | *(replying to a photo)* "@bot make this a sticker" | uses the photo from the message you replied to |
+| "connect my Notion" | replies with an authorisation link for this chat |
+| "add that to the meeting notes page" | finds the page and appends it |
 | "make a sticker of a sleepy capybara" | draws one, transparent background, and keeps it |
 | "make a sticker from <gif link>" | downloads it and converts it, animation intact |
 
@@ -278,6 +280,40 @@ separately.
 budget against. Set `OPENAI_PRICE_INPUT` and `OPENAI_PRICE_OUTPUT` (USD per million tokens) to
 price it.
 
+## Notion
+
+Someone says "connect Notion", the bot replies with a link, and Notion's own consent screen asks
+which pages to share. After that the bot can **search, read, append to and create pages** — only
+within what was shared.
+
+That consent screen is the access control. The bot holds a token scoped to exactly the pages the
+person picked, and can see nothing else in the workspace.
+
+**The connection belongs to the chat, not the person.** Anyone in that group can then ask the bot
+to read or write those pages. In a group that is the point; before connecting a private workspace
+to a busy room, it is the thing to know. `disconnect_notion` drops the token, though revoking the
+access itself is done in Notion's settings.
+
+**Setup.** Create a public integration at
+[notion.so/my-integrations](https://www.notion.so/my-integrations), set its redirect URI to
+`https://your-app/api/notion/callback`, then set:
+
+```bash
+NOTION_CLIENT_ID=...
+NOTION_CLIENT_SECRET=...
+APP_URL=https://your-app        # only if it differs from the default
+```
+
+With those unset the Notion tools are not offered at all, rather than offered and failing.
+
+**The `state` parameter is signed** with the client secret and expires after fifteen minutes.
+Without that, anyone who found the callback URL could bind their own workspace to someone else's
+conversation — the state carries which chat is connecting, so it has to be unforgeable rather
+than merely opaque. `npm run smoke` covers the tampering cases.
+
+Pinned to Notion API version `2026-03-11`. Versions are dated and response shapes change between
+them, so the header is explicit rather than left to a default.
+
 ## Memory
 
 Facts are scoped to the chat they were told in — the bot sits in shared rooms, and something
@@ -365,6 +401,8 @@ lib/stickers.ts                  the sticker library: decrypt, dedupe, describe,
 lib/sticker-maker.ts             ffmpeg: anything -> 512x512 WebP, animation preserved
 lib/fetch-media.ts               guarded remote downloads (SSRF, redirects, size cap)
 lib/about.ts                     what the bot knows about itself
+lib/notion.ts                    Notion OAuth and the page operations
+lib/oauth-state.ts               the signed state that binds a connection to a chat
 lib/usage.ts                     token accounting and the cost estimate
 lib/audio.ts                     TTS output -> Ogg/Opus, the voice-note format
 lib/ffmpeg.ts                    shared ffmpeg runner and scratch directories

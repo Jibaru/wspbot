@@ -124,6 +124,22 @@ const migrate = async (): Promise<void> => {
       chat           text
     );
     create index if not exists model_usage_at_idx on model_usage (at desc);
+
+    /*
+     * One Notion connection per chat. Keyed on the chat rather than the person because the bot
+     * acts on behalf of a conversation: whoever connects it is choosing, at Notion's own consent
+     * screen, exactly which pages that room may reach.
+     */
+    create table if not exists notion_connections (
+      chat           text primary key,
+      access_token   text        not null,
+      refresh_token  text,
+      workspace_id   text,
+      workspace_name text,
+      bot_id         text,
+      connected_by   text,
+      connected_at   timestamptz not null default now()
+    );
   `);
 };
 

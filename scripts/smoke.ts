@@ -7,6 +7,7 @@
 import { createHmac } from "node:crypto";
 import { verify } from "../lib/signature";
 import * as mentions from "../lib/mentions";
+import { encodeState, decodeState } from "../lib/oauth-state";
 
 const SECRET = "test-secret";
 const BOT = {
@@ -293,6 +294,47 @@ check(
   Boolean(mentions.parse(groupTagged as unknown as Record<string, unknown>)?.quoted),
   false,
 );
+
+/**
+ * The OAuth state binds a Notion connection to one chat. If it were forgeable, anyone who found
+ * the callback URL could attach their workspace to someone else's conversation.
+ */
+console.log("\nOAuth state (which chat a Notion connection belongs to):");
+{
+  const SECRET = "client-secret";
+  const CHAT = "1203630@g.us";
+  const state = encodeState(CHAT, SECRET);
+
+  check("round-trips the chat", decodeState(state, SECRET), CHAT);
+
+  const rejects = (label: string, fn: () => unknown) => {
+    let refused = false;
+    try {
+      fn();
+    } catch {
+      refused = true;
+    }
+    check(label, refused, true);
+  };
+
+  rejects("a different secret is refused", () => decodeState(state, "another-secret"));
+  rejects("a tampered signature is refused", () => decodeState(`${state.split(".")[0]}.AAAA`, SECRET));
+  rejects("a swapped payload is refused", () =>
+    // Re-pointing the state at another chat must not survive, even with the original signature.
+    decodeState(
+      `${Buffer.from(JSON.stringify({ c: "999@g.us", e: Date.now() + 1000 })).toString("base64url")}.${state.split(".")[1]}`,
+      SECRET,
+    ),
+  );
+  rejects("a state with no signature is refused", () => decodeState("justpayload", SECRET));
+  rejects("an expired state is refused", () =>
+    // Issued sixteen minutes ago, against a fifteen-minute lifetime.
+    decodeState(encodeState(CHAT, SECRET, Date.now() - 16 * 60 * 1000), SECRET),
+  );
+
+  // Two links for the same chat must differ, or one could be replayed as the other.
+  check("two states differ", encodeState(CHAT, SECRET) !== encodeState(CHAT, SECRET), true);
+}
 
 const parsed = mentions.parse(
   groupTagged as unknown as Record<string, unknown>,

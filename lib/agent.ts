@@ -18,6 +18,7 @@ import * as memory from "./memory";
 import { about } from "./about";
 import * as usage from "./usage";
 import * as stickers from "./stickers";
+import * as notion from "./notion";
 import { toVoiceNote, VOICE_NOTE_MIMETYPE, VOICE_NOTE_FILENAME } from "./audio";
 import { fetchDecrypted } from "./inbound-media";
 import type { Media, Quoted } from "./mentions";
@@ -99,9 +100,10 @@ export const clearHistory = (chat: string): Promise<unknown[]> =>
   query("delete from messages where chat = $1", [chat]);
 
 const systemPrompt = async (turn: Turn): Promise<string> => {
-  const [memories, stickerList] = await Promise.all([
+  const [memories, stickerList, notionConnection] = await Promise.all([
     memory.list(turn.chat).then(memory.render),
     stickers.list().then(stickers.render),
+    config.notion() ? notion.connectionFor(turn.chat) : Promise.resolve(null),
   ]);
   return [
     `You are a helpful assistant living inside a WhatsApp ${turn.isGroup ? "group chat" : "chat"}, reached by tagging you.`,
@@ -128,6 +130,17 @@ const systemPrompt = async (turn: Turn): Promise<string> => {
     "- `name_sticker` renames one. Use it when someone says what a sticker should be called, so it can be asked for by that name later.",
     "- After a tool has put something in the chat, add at most one short line of text — or none at all. Do not describe what you just sent; everyone can see it.",
     "",
+    ...(config.notion()
+      ? [
+          "Notion:",
+          notionConnection
+            ? `- This chat is connected to Notion${notionConnection.workspaceName ? ` (${notionConnection.workspaceName})` : ""}. You can only see pages that were explicitly shared with you, so if something is missing, say that rather than assuming it does not exist.`
+            : "- This chat is not connected to Notion. If someone asks you to connect it, or wants you to read or write something there, use `connect_notion` and send them the link.",
+          "- Always find a page with `notion_search` before reading or writing. Page ids come from there and nowhere else — never invent one.",
+          "- Writing to someone's notes is not reversible from here. When a request is vague about where something should go, ask which page first.",
+          "",
+        ]
+      : []),
     "Remembering:",
     "- When someone asks you to record, remember or note something, call `remember` and confirm in one short line.",
     "- Also remember durable facts about this chat that were clearly meant to stick (decisions, deadlines, preferences). Do not remember passing chatter.",
@@ -170,6 +183,20 @@ const stickerSource = (turn: Turn): Media | undefined => {
   const quoted = turn.quoted?.media;
   if (quoted && quoted.kind !== "sticker") return quoted;
   return undefined;
+};
+
+/**
+ * Returned rather than thrown, so the model tells the person what to do instead of the turn
+ * dying. Being unconnected is by far the commonest reason a Notion tool cannot proceed.
+ */
+const NOT_CONNECTED =
+  "This chat is not connected to Notion yet. Offer to connect it with `connect_notion`.";
+
+/** Notion's own message is usually the useful part — "page not found", "unauthorized". */
+const notionFailure = (err: unknown): string => {
+  const why = err instanceof Error ? err.message : String(err);
+  console.error("[notion] tool failed:", why);
+  return `Notion said: ${why}`;
 };
 
 /** Guards against the model passing a data: URI, a relative path, or something invented. */
@@ -391,6 +418,122 @@ const toolsFor = (turn: Turn, sent: string[]) => ({
       }
     },
   }),
+
+  /**
+   * Offered only when this deployment has Notion credentials. A tool that cannot work is worse
+   * than one that is absent: the model would promise things and then fail.
+   */
+  ...(config.notion()
+    ? {
+        connect_notion: tool({
+          description:
+            "Give this chat a link to connect a Notion workspace. Use it when someone asks to connect, link or set up Notion. They choose on Notion's own screen which pages to share.",
+          inputSchema: z.object({}),
+          execute: async () => {
+            const existing = await notion.connectionFor(turn.chat);
+            const link = notion.authorizeUrl(turn.chat);
+            return [
+              existing
+                ? `This chat is already connected${existing.workspaceName ? ` to ${existing.workspaceName}` : ""}. Opening this link again replaces that connection.`
+                : "Send them this link.",
+              link,
+              "It lasts 15 minutes. Tell them to pick the pages they want you to reach — you get access to those and nothing else.",
+            ].join("\n");
+          },
+        }),
+
+        disconnect_notion: tool({
+          description:
+            "Forget this chat's Notion connection. Use it when someone asks to disconnect, unlink or revoke Notion.",
+          inputSchema: z.object({}),
+          execute: async () => {
+            const had = await notion.disconnect(turn.chat);
+            return had
+              ? "Disconnected. Tell them to also remove the connection in Notion's settings if they want the access itself revoked."
+              : "This chat was not connected to Notion.";
+          },
+        }),
+
+        notion_search: tool({
+          description:
+            "Find pages in the connected Notion workspace by title. Start here — every other Notion tool needs a page id, and this is where ids come from. An empty query lists what is reachable.",
+          inputSchema: z.object({
+            query: z.string().describe("Words from the page title. Empty lists everything shared."),
+          }),
+          execute: async ({ query: q }) => {
+            const connection = await notion.connectionFor(turn.chat);
+            if (!connection) return NOT_CONNECTED;
+            try {
+              const pages = await notion.search(connection, q);
+              if (pages.length === 0) {
+                return "Nothing matched. Only pages explicitly shared with the integration are visible.";
+              }
+              return pages.map((p) => `- ${p.title} (id: ${p.id})`).join("\n");
+            } catch (err) {
+              return notionFailure(err);
+            }
+          },
+        }),
+
+        notion_read: tool({
+          description:
+            "Read the contents of a Notion page. Get the id from `notion_search` first — never guess one.",
+          inputSchema: z.object({
+            pageId: z.string().describe("The page id from notion_search."),
+          }),
+          execute: async ({ pageId }) => {
+            const connection = await notion.connectionFor(turn.chat);
+            if (!connection) return NOT_CONNECTED;
+            try {
+              return await notion.readPage(connection, pageId);
+            } catch (err) {
+              return notionFailure(err);
+            }
+          },
+        }),
+
+        notion_add: tool({
+          description:
+            "Append text to the end of a Notion page. Use it to add a note, a decision or an item someone asked you to record there. Blank lines separate paragraphs.",
+          inputSchema: z.object({
+            pageId: z.string().describe("The page id from notion_search."),
+            text: z.string().min(1).describe("What to write, as it should appear."),
+          }),
+          execute: async ({ pageId, text }) => {
+            const connection = await notion.connectionFor(turn.chat);
+            if (!connection) return NOT_CONNECTED;
+            try {
+              await notion.appendToPage(connection, pageId, text);
+              return "Added to the page.";
+            } catch (err) {
+              return notionFailure(err);
+            }
+          },
+        }),
+
+        notion_create: tool({
+          description:
+            "Create a new page inside an existing Notion page. Use it when someone wants a new document rather than a note added to an existing one.",
+          inputSchema: z.object({
+            parentPageId: z
+              .string()
+              .describe("The page it should live inside, from notion_search."),
+            title: z.string().min(1).describe("The new page's title."),
+            body: z.string().optional().describe("Optional opening text."),
+          }),
+          execute: async ({ parentPageId, title, body }) => {
+            const connection = await notion.connectionFor(turn.chat);
+            if (!connection) return NOT_CONNECTED;
+            try {
+              const page = await notion.createPage(connection, parentPageId, title, body);
+              return `Created "${page.title}".${page.url ? ` ${page.url}` : ""}`;
+            } catch (err) {
+              return notionFailure(err);
+            }
+          },
+        }),
+      }
+    : {}),
 
   check_usage: tool({
     description:

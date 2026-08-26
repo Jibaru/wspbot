@@ -29,6 +29,8 @@ app/api/wapi/webhook/route.ts    the only entry point for inbound messages
 instrumentation.ts               starts the session watchdog at boot
 lib/agent.ts                     the model turn: prompt + every tool
 lib/about.ts                     what the bot knows about itself
+lib/notion.ts                    Notion OAuth + page operations
+lib/oauth-state.ts               signed OAuth state (no server-only, so it is testable)
 lib/memory.ts                    facts, per chat or global
 lib/stickers.ts                  the shared sticker library
 lib/sticker-maker.ts             ffmpeg: anything -> 512x512 WebP
@@ -77,6 +79,9 @@ like a simplification opportunity.
 - **A reply carries a full copy of what it replies to**, in `contextInfo.quotedMessage` — keys
   included, so quoted media decrypts exactly like a top-level attachment. That copy is the whole
   point of a reply: the words rarely carry the meaning without it.
+- **The Notion OAuth `state` must stay signed.** It carries which chat is connecting; forgeable,
+  it would let anyone who found the callback bind their workspace to someone else's conversation.
+  `lib/oauth-state.ts` is deliberately free of `server-only` so `npm run smoke` can test it.
 - **Groups only, and only when tagged.** DMs are ignored by default (`BOT_REPLY_TO_DMS`).
   Stickers are the sole exception: collected untagged, silently, never answered.
 

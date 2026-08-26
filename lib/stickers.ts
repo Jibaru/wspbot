@@ -1,6 +1,6 @@
 import "server-only";
 import { createHash } from "node:crypto";
-import { generateObject } from "ai";
+import { generateObject, generateImage } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { z } from "zod";
 import { config } from "./config";
@@ -247,6 +247,7 @@ const store = async (
   bytes: Buffer,
   describeFrom: Buffer,
   presetLabel?: string,
+  presetDescription?: string,
 ): Promise<Sticker> => {
   const sha256 = createHash("sha256").update(bytes).digest("hex");
 
@@ -268,7 +269,7 @@ const store = async (
   });
 
   const { label, description } = presetLabel
-    ? { label: presetLabel, description: null as string | null }
+    ? { label: presetLabel, description: presetDescription ?? null }
     : await describe(describeFrom);
 
   const inserted = await query<Row>(
@@ -331,6 +332,64 @@ export const createFromUrl = async (
   const forDescription = animated ? await firstFrame(bytes) : webp;
 
   return store(chat, senderName, webp, forDescription, label);
+};
+
+/**
+ * Steers the image model towards something that reads as a sticker rather than a picture.
+ *
+ * The transparent background is the load-bearing part: without it every sticker arrives as a
+ * square photo with a white card behind it, which looks broken next to real ones. Drop shadows
+ * and borders are ruled out for the same reason — they turn into visible rectangles once the
+ * background is gone.
+ */
+const STICKER_STYLE =
+  "Sticker art: one clear subject, centred, bold clean outlines, simple flat shapes and vivid " +
+  "colours. Fully transparent background. No drop shadow, no border, no frame, no background " +
+  "scenery, and no text unless the request asks for words.";
+
+/**
+ * Draw a sticker from a description.
+ *
+ * The counterpart to `createFromUrl`: this invents the picture rather than finding one. Better
+ * for something that does not exist, worse for a specific meme or a real person, and the prompt
+ * steers the model between the two.
+ */
+export const createFromPrompt = async (
+  chat: string,
+  senderName: string,
+  prompt: string,
+  label?: string,
+): Promise<Sticker> => {
+  const result = await generateImage({
+    model: openai.image(config.imageModel()),
+    prompt: `${prompt.trim()}\n\n${STICKER_STYLE}`,
+    // Square in, square out — ffmpeg only has to scale, never pad.
+    size: "1024x1024",
+    providerOptions: {
+      openai: {
+        background: "transparent",
+        // png keeps the alpha channel intact on the way into ffmpeg.
+        outputFormat: "png",
+        quality: "medium",
+      },
+    },
+  });
+
+  await usage.record({
+    kind: "image",
+    model: config.imageModel(),
+    chat,
+    usage: result.usage,
+  });
+
+  const png = Buffer.from(result.image.uint8Array);
+  const webp = await encodeSticker(png, false);
+
+  /**
+   * No vision call: what it depicts is exactly what was asked for, so the prompt itself is the
+   * description, and a better one than a model looking at the result would write.
+   */
+  return store(chat, senderName, webp, webp, label ?? prompt.trim().slice(0, 40), prompt.trim());
 };
 
 /**

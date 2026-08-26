@@ -126,6 +126,7 @@ Beyond text, the bot decides for itself when one of these fits — you just ask 
 | "link me the docs" | sends a bare URL, which WhatsApp expands into a preview |
 | "send the laughing cat sticker" | sends one of the stickers the chat has already used |
 | *(photo or GIF attached)* "@bot" | turns it into a sticker, animation intact, and keeps it |
+| "make a sticker of a sleepy capybara" | draws one, transparent background, and keeps it |
 | "make a sticker from <gif link>" | downloads it and converts it, animation intact |
 
 Notes on each:
@@ -187,6 +188,16 @@ Without `format=rgba` the padding comes out opaque black, which reads as a lette
 rather than a sticker. Animations are capped at 6 seconds and re-encoded down a quality ladder
 until they fit WhatsApp's ceilings — 100KB static, 500KB animated — since an oversized sticker
 is rejected.
+
+**Drawn from a description.** Ask for a sticker of something that does not exist — "a sleepy
+capybara in sunglasses" — and it draws one. The image is generated with a **transparent
+background**, which is the whole trick: without it every drawn sticker arrives as a square photo
+on a white card and looks broken next to real ones. The prompt supplies the sticker styling
+(bold outlines, flat colour, one centred subject), so you only describe the subject.
+
+Drawing invents; it does not find. For a specific meme, a real person, or an existing picture
+the bot searches instead and uses the link path below — the prompt tells it to pick by whether
+the thing already exists.
 
 **From a link.** Paste a GIF link, or just ask for a sticker of something — the bot can search,
 find a GIF and turn that into one. Whether it animates is decided from the file's magic bytes,
@@ -303,6 +314,7 @@ failed. The bot's manners live in the system prompt in `lib/agent.ts`.
 npm run smoke           # signature verification + "is this message for me?" — no keys needed
 npm run sticker-check   # real ffmpeg conversion: 512x512, animated, under size ceilings
 npm run voice-check     # voice notes really are Ogg/Opus mono 48kHz, per ffprobe
+npm run draw-check      # generates one real image and checks alpha survives (costs money)
 npm run build           # typecheck and production build
 ```
 

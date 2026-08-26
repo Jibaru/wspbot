@@ -30,6 +30,9 @@ export const config = {
   /** Any model your account can reach on the OpenAI Responses API. */
   model: () => optional("BOT_MODEL") ?? "gpt-5.6",
 
+  /** Image model for drawing stickers. gpt-image-* supports transparent backgrounds. */
+  imageModel: () => optional("BOT_IMAGE_MODEL") ?? "gpt-image-1",
+
   /** Reasoning depth. Low keeps a chat bot snappy; raise it if answers feel shallow. */
   effort: () => optional("BOT_EFFORT") ?? "low",
 

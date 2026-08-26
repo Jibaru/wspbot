@@ -71,6 +71,9 @@ like a simplification opportunity.
 - **Never `fetch` a model-supplied URL directly.** `lib/fetch-media.ts` resolves and rejects
   private ranges before connecting and re-validates every redirect hop; a public URL can redirect
   to `169.254.169.254`.
+- **A drawn sticker needs `background: "transparent"`.** Without it the image comes back on a
+  white card and looks broken beside real stickers — and nothing in a typecheck catches that.
+  `npm run draw-check` generates one and verifies the alpha channel survives.
 - **Groups only, and only when tagged.** DMs are ignored by default (`BOT_REPLY_TO_DMS`).
   Stickers are the sole exception: collected untagged, silently, never answered.
 
@@ -96,6 +99,7 @@ like a simplification opportunity.
 npm run smoke           # signature verification + "is this for me?" — no keys needed
 npm run sticker-check   # real ffmpeg conversion + the SSRF guard (needs ffmpeg)
 npm run voice-check     # voice notes really are Ogg/Opus mono 48kHz, per ffprobe
+npm run draw-check      # one real image generation, checks alpha survives (costs money)
 npm run build           # typecheck + production build
 ```
 

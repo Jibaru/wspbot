@@ -1,5 +1,4 @@
 import "server-only";
-import type { LanguageModelUsage } from "ai";
 import { query } from "./db";
 
 /**
@@ -16,7 +15,17 @@ import { query } from "./db";
  * none, because it is the kind of number people budget against.
  */
 
-export type Kind = "reply" | "vision" | "speech";
+export type Kind = "reply" | "vision" | "speech" | "image";
+
+/**
+ * Structural rather than the SDK type, because image generation reports a narrower usage shape
+ * than language models do — no token details — and both need to be recordable here.
+ */
+type AnyUsage = {
+  inputTokens?: number | undefined;
+  outputTokens?: number | undefined;
+  inputTokenDetails?: { cacheReadTokens?: number | undefined } | undefined;
+};
 
 /** USD per million tokens. Published rates as of 2026-07-30; override with env if they move. */
 const RATES: Record<string, { input: number; output: number }> = {
@@ -45,7 +54,7 @@ export const record = async (entry: {
   kind: Kind;
   model: string;
   chat?: string;
-  usage?: LanguageModelUsage;
+  usage?: AnyUsage;
   characters?: number;
 }): Promise<void> => {
   try {

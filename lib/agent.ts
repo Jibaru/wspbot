@@ -112,6 +112,7 @@ const systemPrompt = async (turn: Turn): Promise<string> => {
     "- `send_voice_note` speaks a reply aloud. Use it when asked to say, read, or record something, and for anything genuinely easier to hear than to read. Keep it under roughly 90 seconds of speech.",
     "- `create_poll` asks the group to choose. Use it when someone wants a vote, or is deciding between options in a group.",
     "- `sticker_from_url` downloads a GIF or image from a link and turns it into a sticker, keeping animation. Use it when someone links a GIF, or asks for a sticker of something you can find — search for a GIF first, then pass the direct media URL, not a Tenor or Giphy page link.",
+    "- `draw_sticker` invents a new sticker from a description and sends it. Use it when someone wants a sticker of something that does not exist yet. When they want a specific meme, a real person, or an existing picture, search for it and use `sticker_from_url` instead — drawing invents rather than finds, so pick by whether the thing already exists.",
     "- `send_sticker` sends one from the sticker library below, which is shared by every chat. Reach for it when a sticker answers better than words — a reaction, a joke, agreement — or when someone asks for one. Pick by what it shows, not by its id order. If nothing fits, do not force it; say something instead.",
     "- `check_usage` reports what you have cost so far. Use it when someone asks about tokens, usage or spending, and read the figures back plainly.",
     "- `name_sticker` renames one. Use it when someone says what a sticker should be called, so it can be asked for by that name later.",
@@ -324,6 +325,40 @@ const toolsFor = (turn: Turn, sent: string[]) => ({
         const why = err instanceof Error ? err.message : String(err);
         console.error("[send_sticker] failed", why);
         return `Could not send it: ${why}`;
+      }
+    },
+  }),
+
+  draw_sticker: tool({
+    description:
+      "Draw a brand-new sticker from a description, send it, and add it to the shared library. Use this when someone asks for a sticker of something that does not already exist — an idea, a character, a joke. For a specific meme, a real person, or an existing image, prefer searching and `sticker_from_url` instead: drawing invents, it does not find.",
+    inputSchema: z.object({
+      prompt: z
+        .string()
+        .min(3)
+        .describe(
+          "What to draw, as a plain visual description — the subject and its expression or action. Do not ask for a transparent background or a sticker style; that is applied for you.",
+        ),
+      label: z
+        .string()
+        .optional()
+        .describe("A two-to-four word name for it, if the person asked for a specific one."),
+    }),
+    execute: async ({ prompt, label }) => {
+      try {
+        const made = await stickers.createFromPrompt(
+          turn.chat,
+          turn.senderName,
+          prompt,
+          label,
+        );
+        await wapi.send({ to: turn.chat, stickerUrl: made.url });
+        sent.push(`sticker (${made.label})`);
+        return `Drew and sent "${made.label}", saved as ${made.id}.`;
+      } catch (err) {
+        const why = err instanceof Error ? err.message : String(err);
+        console.error("[draw_sticker] failed", why);
+        return `Could not draw it: ${why}`;
       }
     },
   }),

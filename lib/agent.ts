@@ -89,7 +89,7 @@ export const clearHistory = (chat: string): Promise<unknown[]> =>
 const systemPrompt = async (turn: Turn): Promise<string> => {
   const [memories, stickerList] = await Promise.all([
     memory.list(turn.chat).then(memory.render),
-    stickers.list(turn.chat).then(stickers.render),
+    stickers.list().then(stickers.render),
   ]);
   return [
     `You are a helpful assistant living inside a WhatsApp ${turn.isGroup ? "group chat" : "chat"}, reached by tagging you.`,
@@ -110,7 +110,8 @@ const systemPrompt = async (turn: Turn): Promise<string> => {
     "- `send_voice_note` speaks a reply aloud. Use it when asked to say, read, or record something, and for anything genuinely easier to hear than to read. Keep it under roughly 90 seconds of speech.",
     "- `create_poll` asks the group to choose. Use it when someone wants a vote, or is deciding between options in a group.",
     "- `sticker_from_url` downloads a GIF or image from a link and turns it into a sticker, keeping animation. Use it when someone links a GIF, or asks for a sticker of something you can find — search for a GIF first, then pass the direct media URL, not a Tenor or Giphy page link.",
-    "- `send_sticker` sends one of this chat's saved stickers, listed below. Reach for it when a sticker answers better than words — a reaction, a joke, agreement — or when someone asks for one. Pick by what it shows, not by its id order. If nothing in the list fits, do not force it; say something instead.",
+    "- `send_sticker` sends one from the sticker library below, which is shared by every chat. Reach for it when a sticker answers better than words — a reaction, a joke, agreement — or when someone asks for one. Pick by what it shows, not by its id order. If nothing fits, do not force it; say something instead.",
+    "- `name_sticker` renames one. Use it when someone says what a sticker should be called, so it can be asked for by that name later.",
     "- After a tool has put something in the chat, add at most one short line of text — or none at all. Do not describe what you just sent; everyone can see it.",
     "",
     "Remembering:",
@@ -130,7 +131,7 @@ const systemPrompt = async (turn: Turn): Promise<string> => {
     "Remembered for this chat:",
     memories,
     "",
-    "Stickers saved in this chat:",
+    "Sticker library (shared by every chat):",
     stickerList,
   ].join("\n");
 };
@@ -297,10 +298,13 @@ const toolsFor = (turn: Turn, sent: string[]) => ({
       id: z.string().describe("The sticker id, e.g. s7."),
     }),
     execute: async ({ id }) => {
-      const sticker = await stickers.byId(id, turn.chat);
-      if (!sticker) return `No sticker ${id} in this chat. Pick one from the list.`;
+      const sticker = await stickers.byId(id);
+      if (!sticker) return `There is no sticker ${id}. Pick one from the list.`;
       try {
-        await wapi.send({ to: turn.chat, stickerUrl: sticker.url });
+        // Repairs the row if the upload URL died with an old session — i.e. a changed number.
+        const url = await stickers.liveUrl(sticker);
+        stickers.ensureStored(sticker);
+        await wapi.send({ to: turn.chat, stickerUrl: url });
         sent.push(`sticker (${sticker.label})`);
         return `Sent the "${sticker.label}" sticker.`;
       } catch (err) {
@@ -311,11 +315,26 @@ const toolsFor = (turn: Turn, sent: string[]) => ({
     },
   }),
 
+  name_sticker: tool({
+    description:
+      "Rename a sticker in the library so people can ask for it by that name later. Use it when someone says what a sticker should be called.",
+    inputSchema: z.object({
+      id: z.string().describe("The sticker id, e.g. s7."),
+      name: z.string().describe("The new name — a few words, as someone would say it."),
+    }),
+    execute: async ({ id, name }) => {
+      const renamed = await stickers.rename(id, name);
+      if (!renamed) return `There is no sticker ${id}.`;
+      console.log(`[stickers] renamed ${renamed.id} to "${renamed.label}"`);
+      return `Renamed ${renamed.id} to "${renamed.label}".`;
+    },
+  }),
+
   ...(turn.attachment && turn.attachment.kind !== "sticker"
     ? {
         make_sticker: tool({
           description:
-            "Turn the image, GIF or video attached to this message into a WhatsApp sticker, send it, and add it to this chat's library. Animated sources stay animated. Only call this when something is actually attached.",
+            "Turn the image, GIF or video attached to this message into a WhatsApp sticker, send it, and add it to the shared library. Animated sources stay animated. Only call this when something is actually attached.",
           inputSchema: z.object({
             label: z
               .string()

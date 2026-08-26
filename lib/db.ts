@@ -71,18 +71,39 @@ const migrate = async (): Promise<void> => {
 
     create table if not exists stickers (
       id          serial primary key,
+      -- Where it was first seen. Provenance only: the library is shared by every chat.
       chat        text        not null,
-      -- Hash of the actual bytes. The same sticker gets sent over and over, and this is what
-      -- stops it being re-uploaded and re-described every time.
+      -- Hash of the actual bytes, and the identity of a sticker. The same one gets sent over
+      -- and over, and this is what stops it being re-uploaded and re-described every time.
       sha256      text        not null,
       url         text        not null,
       label       text        not null,
       description text,
       added_by    text,
-      created_at  timestamptz not null default now(),
-      unique (chat, sha256)
+      created_at  timestamptz not null default now()
     );
-    create index if not exists stickers_sha_idx on stickers (sha256);
+
+    -- The sticker itself, so the library survives losing the media host — a new number means a
+    -- new session, and nothing guarantees the old upload URLs outlive it.
+    alter table stickers add column if not exists bytes bytea;
+
+    /*
+     * Stickers used to be scoped per chat, one row per (chat, sha256). They are now shared, so
+     * the duplicates collapse to one row each. Guarded on the old constraint so the delete runs
+     * exactly once, on the deployment that first sees this code, and never again.
+     */
+    do $$
+    begin
+      if exists (
+        select 1 from pg_constraint where conname = 'stickers_chat_sha256_key'
+      ) then
+        delete from stickers a using stickers b
+         where a.sha256 = b.sha256 and a.id > b.id;
+        alter table stickers drop constraint stickers_chat_sha256_key;
+      end if;
+    end $$;
+
+    create unique index if not exists stickers_sha256_key on stickers (sha256);
   `);
 };
 

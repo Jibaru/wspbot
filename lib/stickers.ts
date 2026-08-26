@@ -12,28 +12,34 @@ import type { Media } from "./mentions";
 import { fetchMedia, looksAnimated } from "./fetch-media";
 
 /**
- * The sticker library.
+ * The sticker library — one shared collection, used by every chat.
  *
- * People send stickers; the bot quietly keeps them so it can send them back later. Three things
- * make that harder than it sounds:
+ * Three things make collecting stickers harder than it sounds:
  *
  * 1. Inbound media is encrypted. The webhook carries a CDN link and a key, not usable bytes.
  * 2. Decryption gives a URL that dies after an hour, so anything kept must be re-uploaded.
  * 3. The bot cannot "see" its library at send time, so each sticker is described once on
  *    arrival and chosen later by that description.
  *
- * Bytes are hashed so the same sticker — and they repeat constantly — is uploaded and described
- * exactly once, no matter how often it is sent.
+ * A sticker's identity is the sha256 of its bytes, so the same one is uploaded and described
+ * exactly once no matter how often, or where, it is sent.
+ *
+ * The bytes are kept in the database as well as on wapi. That is what makes the library survive
+ * a change of number: a new number means a new session, and nothing promises the old upload
+ * URLs outlive it — but a sticker whose bytes are held here can simply be uploaded again.
  */
 
-/** Scoped per chat, like memories: an in-joke from one group has no business in another. */
 export type Sticker = {
   id: string;
+  /** Where it was first seen. Provenance only — every chat can use every sticker. */
   chat: string;
   url: string;
+  /** The name. Auto-generated on arrival, and renameable afterwards. */
   label: string;
   description: string | null;
   addedBy: string | null;
+  /** Whether the bytes are held locally, and so re-uploadable if the URL dies. */
+  hasBytes: boolean;
 };
 
 type Row = {
@@ -44,6 +50,7 @@ type Row = {
   label: string;
   description: string | null;
   added_by: string | null;
+  has_bytes?: boolean;
 };
 
 const toSticker = (row: Row): Sticker => ({
@@ -53,38 +60,57 @@ const toSticker = (row: Row): Sticker => ({
   label: row.label,
   description: row.description,
   addedBy: row.added_by,
+  hasBytes: row.has_bytes ?? false,
 });
 
+/** Never select `bytes` unless it is actually needed — the rows are hundreds of KB each. */
+const COLUMNS =
+  "id, chat, sha256, url, label, description, added_by, (bytes is not null) as has_bytes";
+
 /** Enough for the model to choose from without crowding the prompt. */
-const LIST_LIMIT = 40;
+const LIST_LIMIT = 60;
 
 /** Refuse anything implausible for a sticker before spending an upload and a vision call. */
 const MAX_BYTES = 2 * 1024 * 1024;
 
-export const list = async (chat: string): Promise<Sticker[]> => {
+const parseId = (id: string): number | null => {
+  const digits = /^s?(\d+)$/.exec(id.trim());
+  return digits?.[1] ? Number(digits[1]) : null;
+};
+
+/** The whole library — shared, so there is nothing to scope by. */
+export const list = async (): Promise<Sticker[]> => {
   const rows = await query<Row>(
-    "select * from stickers where chat = $1 order by id desc limit $2",
-    [chat, LIST_LIMIT],
+    `select ${COLUMNS} from stickers order by id desc limit $1`,
+    [LIST_LIMIT],
   );
   return rows.map(toSticker);
 };
 
-export const byId = async (id: string, chat: string): Promise<Sticker | null> => {
-  const digits = /^s?(\d+)$/.exec(id.trim());
-  if (!digits?.[1]) return null;
+export const byId = async (id: string): Promise<Sticker | null> => {
+  const numeric = parseId(id);
+  if (numeric === null) return null;
+  const rows = await query<Row>(`select ${COLUMNS} from stickers where id = $1`, [numeric]);
+  return rows[0] ? toSticker(rows[0]) : null;
+};
+
+export const remove = async (id: string): Promise<Sticker | null> => {
+  const numeric = parseId(id);
+  if (numeric === null) return null;
   const rows = await query<Row>(
-    "select * from stickers where id = $1 and chat = $2",
-    [Number(digits[1]), chat],
+    `delete from stickers where id = $1 returning ${COLUMNS}`,
+    [numeric],
   );
   return rows[0] ? toSticker(rows[0]) : null;
 };
 
-export const remove = async (id: string, chat: string): Promise<Sticker | null> => {
-  const digits = /^s?(\d+)$/.exec(id.trim());
-  if (!digits?.[1]) return null;
+/** Give a sticker a name people will actually use to ask for it. */
+export const rename = async (id: string, label: string): Promise<Sticker | null> => {
+  const numeric = parseId(id);
+  if (numeric === null) return null;
   const rows = await query<Row>(
-    "delete from stickers where id = $1 and chat = $2 returning *",
-    [Number(digits[1]), chat],
+    `update stickers set label = $2 where id = $1 returning ${COLUMNS}`,
+    [numeric, label.trim()],
   );
   return rows[0] ? toSticker(rows[0]) : null;
 };
@@ -92,10 +118,71 @@ export const remove = async (id: string, chat: string): Promise<Sticker | null> 
 /** Rendered into the system prompt so the model can pick one without a lookup round-trip. */
 export const render = (stickers: Sticker[]): string =>
   stickers.length === 0
-    ? "(no stickers saved in this chat yet)"
+    ? "(no stickers saved yet)"
     : stickers
         .map((s) => `- [${s.id}] ${s.label}${s.description ? ` — ${s.description}` : ""}`)
         .join("\n");
+
+/**
+ * A URL wapi can fetch right now.
+ *
+ * The stored URL usually works. When it does not — the likeliest reason being that the session
+ * which uploaded it is gone, i.e. the number changed — the bytes held in the database are
+ * uploaded again and the row repaired. This is the whole point of storing them.
+ */
+export const liveUrl = async (sticker: Sticker): Promise<string> => {
+  const numeric = parseId(sticker.id)!;
+
+  const reachable = await fetch(sticker.url, { method: "HEAD" })
+    .then((r) => r.ok)
+    .catch(() => false);
+  if (reachable) return sticker.url;
+
+  const rows = await query<{ bytes: Buffer | null }>(
+    "select bytes from stickers where id = $1",
+    [numeric],
+  );
+  const bytes = rows[0]?.bytes;
+  if (!bytes) {
+    throw new StickerError(
+      `"${sticker.label}" is no longer hosted and there is no local copy to restore it from`,
+    );
+  }
+
+  const url = await wapi.upload({
+    base64: Buffer.from(bytes).toString("base64"),
+    mimetype: "image/webp",
+    fileName: "sticker.webp",
+  });
+  await query("update stickers set url = $2 where id = $1", [numeric, url]);
+  console.log(`[stickers] re-uploaded ${sticker.id} after its URL went dead`);
+  return url;
+};
+
+/**
+ * Older rows predate local storage. Filling them in opportunistically means the library becomes
+ * portable over time rather than only from here on. Failure is ignored — it is a nicety.
+ */
+const backfillBytes = async (sticker: Sticker): Promise<void> => {
+  if (sticker.hasBytes) return;
+  try {
+    const res = await fetch(sticker.url);
+    if (!res.ok) return;
+    const bytes = Buffer.from(await res.arrayBuffer());
+    if (bytes.length === 0 || bytes.length > MAX_BYTES) return;
+    await query("update stickers set bytes = $2 where id = $1 and bytes is null", [
+      parseId(sticker.id),
+      bytes,
+    ]);
+  } catch {
+    /* opportunistic only */
+  }
+};
+
+/** Fire-and-forget: never let a backfill delay or break a send. */
+export const ensureStored = (sticker: Sticker): void => {
+  void backfillBytes(sticker);
+};
 
 /**
  * Ask the model what the sticker shows, so it can be chosen by description later.
@@ -148,8 +235,8 @@ const fetchDecrypted = async (node: Record<string, unknown>): Promise<Buffer> =>
 };
 
 /**
- * Upload, describe and record one finished sticker, reusing prior work when the same bytes
- * have been seen before. Returns the row, or null if an identical sticker already existed.
+ * Upload, describe and record one finished sticker. A sticker already known by its bytes is
+ * returned as-is — no second upload, no second vision call, no duplicate row.
  */
 const store = async (
   chat: string,
@@ -157,61 +244,54 @@ const store = async (
   bytes: Buffer,
   describeFrom: Buffer,
   presetLabel?: string,
-): Promise<{ sticker: Sticker; isNew: boolean } | null> => {
+): Promise<Sticker> => {
   const sha256 = createHash("sha256").update(bytes).digest("hex");
 
-  const already = await query<Row>(
-    "select * from stickers where chat = $1 and sha256 = $2",
-    [chat, sha256],
-  );
-  if (already[0]) return { sticker: toSticker(already[0]), isNew: false };
+  const already = await query<Row>(`select ${COLUMNS} from stickers where sha256 = $1`, [sha256]);
+  if (already[0]) {
+    const existing = toSticker(already[0]);
+    // A name given explicitly now beats one guessed earlier.
+    if (presetLabel && presetLabel !== existing.label) {
+      return (await rename(existing.id, presetLabel)) ?? existing;
+    }
+    return existing;
+  }
 
-  /**
-   * Seen in another chat: reuse its permanent URL and description rather than paying for the
-   * upload and the vision call again. Only the row is per-chat, not the work.
-   */
-  const elsewhere = await query<Row>(
-    "select * from stickers where sha256 = $1 limit 1",
-    [sha256],
-  );
+  // The decrypted URL expires in an hour, so the bytes need a permanent home.
+  const url = await wapi.upload({
+    base64: bytes.toString("base64"),
+    mimetype: "image/webp",
+    fileName: "sticker.webp",
+  });
 
-  const { url, label, description } = elsewhere[0]
-    ? {
-        url: elsewhere[0].url,
-        label: elsewhere[0].label,
-        description: elsewhere[0].description,
-      }
-    : await (async () => {
-        // The decrypted URL expires in an hour, so the bytes need a permanent home.
-        const uploaded = await wapi.upload({
-          base64: bytes.toString("base64"),
-          mimetype: "image/webp",
-          fileName: "sticker.webp",
-        });
-        const described = presetLabel
-          ? { label: presetLabel, description: null as string | null }
-          : await describe(describeFrom);
-        return { url: uploaded, ...described };
-      })();
+  const { label, description } = presetLabel
+    ? { label: presetLabel, description: null as string | null }
+    : await describe(describeFrom);
 
   const inserted = await query<Row>(
-    `insert into stickers (chat, sha256, url, label, description, added_by)
-     values ($1, $2, $3, $4, $5, $6)
-     on conflict (chat, sha256) do nothing
-     returning *`,
-    [chat, sha256, url, label, description, senderName],
+    `insert into stickers (chat, sha256, url, label, description, added_by, bytes)
+     values ($1, $2, $3, $4, $5, $6, $7)
+     on conflict (sha256) do nothing
+     returning ${COLUMNS}`,
+    [chat, sha256, url, label, description, senderName, bytes],
   );
 
-  if (!inserted[0]) return null; // Lost a race with a concurrent delivery; already stored.
-  console.log(`[stickers] saved [${inserted[0].id}] ${label} from ${senderName}`);
-  return { sticker: toSticker(inserted[0]), isNew: true };
+  if (inserted[0]) {
+    console.log(`[stickers] saved [${inserted[0].id}] ${label} from ${senderName}`);
+    return toSticker(inserted[0]);
+  }
+
+  // Lost a race with a concurrent delivery; the winner's row is the answer.
+  const raced = await query<Row>(`select ${COLUMNS} from stickers where sha256 = $1`, [sha256]);
+  if (!raced[0]) throw new StickerError("could not save the sticker");
+  return toSticker(raced[0]);
 };
 
 /**
- * Build a sticker out of an image, GIF or video the person attached, then store it.
+ * Build a sticker out of an image, GIF or video someone attached, then store it.
  *
- * Unlike `capture` this one throws: it runs from a tool call, and the person asked for it, so
- * a failure needs to reach them rather than disappear into a log.
+ * Unlike `capture` this one throws: it runs from a tool call, and the person asked for it, so a
+ * failure needs to reach them rather than disappear into a log.
  */
 export const createFrom = async (
   chat: string,
@@ -223,19 +303,12 @@ export const createFrom = async (
   if (source.length === 0) throw new StickerError("the attachment came back empty");
 
   const webp = await encodeSticker(source, media.animated);
-
   // Vision models cannot read animated WebP, so describe a single rendered frame instead.
   const forDescription = media.animated ? await firstFrame(source) : webp;
 
-  const result = await store(chat, senderName, webp, forDescription, label);
-  if (!result) throw new StickerError("could not save the sticker");
-  return result.sticker;
+  return store(chat, senderName, webp, forDescription, label);
 };
 
-/**
- * Store a sticker that just arrived. Silent: never replies, and never throws into the webhook —
- * failing to keep a sticker must not cost the message it came with.
- */
 /**
  * Build a sticker from a URL — a GIF someone linked, or one the model found by searching.
  *
@@ -254,11 +327,13 @@ export const createFromUrl = async (
   const webp = await encodeSticker(bytes, animated);
   const forDescription = animated ? await firstFrame(bytes) : webp;
 
-  const result = await store(chat, senderName, webp, forDescription, label);
-  if (!result) throw new StickerError("could not save the sticker");
-  return result.sticker;
+  return store(chat, senderName, webp, forDescription, label);
 };
 
+/**
+ * Store a sticker that just arrived. Silent: never replies, and never throws into the webhook —
+ * failing to keep a sticker must not cost the message it came with.
+ */
 export const capture = async (
   chat: string,
   senderName: string,
@@ -270,13 +345,7 @@ export const capture = async (
       console.warn(`[stickers] skipping, ${bytes.length} bytes`);
       return null;
     }
-    if (bytes.length === 0 || bytes.length > MAX_BYTES) {
-      console.warn(`[stickers] skipping, ${bytes.length} bytes`);
-      return null;
-    }
-
-    const result = await store(chat, senderName, bytes, bytes);
-    return result?.sticker ?? null;
+    return await store(chat, senderName, bytes, bytes);
   } catch (err) {
     console.error("[stickers] capture failed:", err instanceof Error ? err.message : err);
     return null;

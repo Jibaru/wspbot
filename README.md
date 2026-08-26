@@ -186,8 +186,21 @@ failure — the bot needs the media link itself.
 bot picks one the same way it recalls a fact — no lookup step. Ask for one, or let it reach for
 one when a sticker answers better than words.
 
-Scoped per chat, like memories: an in-joke sticker from one group has no business appearing in
-another. Everything collected is shown on `/`.
+**One shared library.** Every chat draws from the same collection — a sticker picked up in one
+group can be sent in any other. (Memories are still per chat; a fact and a reaction picture are
+not the same kind of thing.)
+
+**Named, and renameable.** Each sticker is auto-named on arrival by the vision call. Say what one
+should be called — "call that one *angry cat*" — and the bot renames it, so it can be asked for
+by that name later.
+
+**Survives a change of number.** The bytes are stored in Postgres alongside the wapi URL. A new
+number means a new session, and nothing promises the old upload URLs outlive it — so when a URL
+stops resolving, the sticker is uploaded again from the local copy and the row repaired, with no
+one noticing. Older stickers saved before this get their bytes backfilled the first time they
+are sent.
+
+Everything collected is shown on `/`.
 
 ## Memory
 

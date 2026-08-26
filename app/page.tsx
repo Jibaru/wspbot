@@ -18,10 +18,10 @@ export default async function Page() {
     settle(wapi.status()),
     settle(wapi.me()),
     settle(memory.list()),
-    // Read directly: lib/stickers scopes to one chat, and this page shows every chat's.
+    // The library is shared, so this is simply all of it.
     settle(
-      query<{ id: number; label: string; url: string; chat: string }>(
-        "select id, label, url, chat from stickers order by id desc limit 60",
+      query<{ id: number; label: string; url: string; chat: string; portable: boolean }>(
+        "select id, label, url, chat, (bytes is not null) as portable from stickers order by id desc limit 60",
       ),
     ),
   ]);
@@ -84,12 +84,12 @@ export default async function Page() {
           <p className="empty">Could not read the sticker library.</p>
         ) : stickers.length === 0 ? (
           <p className="empty">
-            None yet. Send a sticker in a chat the bot is in and it will keep it.
+            None yet. Send a sticker in any chat the bot is in, or tag it with an image.
           </p>
         ) : (
           <ul className="stickers">
             {stickers.map((s) => (
-              <li key={s.id} title={`s${s.id} · ${s.chat}`}>
+              <li key={s.id} title={`s${s.id} · first seen in ${s.chat}${s.portable ? "" : " · no local copy"}`}>
                 {/* Plain img: these are wapi-hosted webp, and next/image would only add a proxy. */}
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={s.url} alt={s.label} loading="lazy" />

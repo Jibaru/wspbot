@@ -13,6 +13,10 @@ services:
       WAPI_BASE_URL: ${WAPI_BASE_URL}
       WAPI_API_KEY: ${WAPI_API_KEY}
       WAPI_WEBHOOK_SECRET: ${WAPI_WEBHOOK_SECRET}
+      # Account-level, and only used to reconnect a dropped session. Optional: without it the
+      # bot works but cannot bring itself back after the session drops.
+      WAPI_PAT: ${WAPI_PAT}
+      WAPI_SESSION_ID: ${WAPI_SESSION_ID}
       BOT_REPLY_TO_DMS: ${BOT_REPLY_TO_DMS}
     expose:
       - "3000"

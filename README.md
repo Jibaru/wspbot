@@ -47,11 +47,37 @@ npm run dev
 | `DATABASE_URL` | any Postgres. Tables are created on first request. |
 | `WAPI_API_KEY` | wapi dashboard → the **session's** page |
 | `WAPI_WEBHOOK_SECRET` | same page |
+| `WAPI_PAT` + `WAPI_SESSION_ID` | *optional* — dashboard **Tokens** page. Only used to reconnect a dropped session. |
 
 > The session API key and the account-level Personal Access Token both go on
-> `Authorization: Bearer` and are **not** interchangeable. This app only ever sends messages, so
-> it only needs the session key. If you see a `403` rather than a `401`, you have the wrong
-> token *type* — that is what a 403 means here.
+> `Authorization: Bearer` and are **not** interchangeable. Messaging needs the session key;
+> reconnecting a dropped session needs the PAT, which is the only reason this app takes one. If
+> you see a `403` rather than a `401`, you have the wrong token *type* — that is what a 403
+> means here.
+>
+> The PAT grants control of every session on the account, so leaving it unset is a legitimate
+> choice: the bot behaves identically until the session drops, at which point it logs that it
+> cannot reconnect instead of doing so.
+
+## Staying connected
+
+The WhatsApp session drops on its own — usually when the wapi stack it lives in restarts, which
+takes the socket down with it. Until something reconnects it the bot is silently deaf: the app
+is up, the webhook is registered, and nothing arrives.
+
+Two triggers, because neither is enough alone:
+
+- the **`session.status` webhook**, which reacts within a second — but only arrives if wapi is
+  alive to send it, which is precisely not the case when wapi is what restarted;
+- a **watchdog** that checks every two minutes from `instrumentation.ts`, catching the restart
+  case a little later. This is a long-lived container, not a serverless function, so a plain
+  interval is a real thing here and no external scheduler is needed.
+
+Neither trusts what prompted it: both call `GET /api/status` and do nothing if the session is
+actually fine — the webhook payload is undocumented, and a stale "disconnected" would otherwise
+reconnect a healthy session. Attempts are spaced a minute apart and give up after five
+consecutive failures, since the usual cause of a persistent failure is a session needing its QR
+scanned again, which retrying cannot fix.
 
 ## Pointing wapi at it
 

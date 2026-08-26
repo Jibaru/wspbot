@@ -17,6 +17,14 @@ export const config = {
 
   webhookSecret: () => required("WAPI_WEBHOOK_SECRET"),
 
+  /**
+   * Account-level token, needed only to reconnect a dropped session — `connect` is a
+   * session-admin route and the session key gets a 403 there. Optional: without it the bot
+   * still works, it just cannot heal itself when the session drops.
+   */
+  wapiPatOptional: () => optional("WAPI_PAT"),
+  sessionId: () => optional("WAPI_SESSION_ID"),
+
   databaseUrl: () => required("DATABASE_URL"),
 
   /** Any model your account can reach on the OpenAI Responses API. */

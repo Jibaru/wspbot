@@ -102,6 +102,27 @@ export const wapi = {
     return (await request("/api/status"))["status"] as string;
   },
 
+  /**
+   * Reconnect a session from its stored credentials.
+   *
+   * Takes the **Personal Access Token**, not the session key — this is a session-admin route,
+   * and passing the session key returns 403 rather than 401. Asynchronous: it answers with a
+   * status right away, and `NEED_SCAN` means the stored credentials are gone and a human has to
+   * scan a QR. Note the status is SCREAMING_CASE here and lowercase from `/api/status`.
+   */
+  async connect(
+    sessionId: string | number,
+  ): Promise<{ status: string; qrCode?: string; message?: string }> {
+    const pat = config.wapiPatOptional();
+    if (!pat) throw new WapiError(0, "WAPI_PAT is not set");
+    const body = await request(`/api/whatsapp-sessions/${sessionId}/connect`, {
+      method: "POST",
+      body: JSON.stringify({}),
+      headers: { Authorization: `Bearer ${pat}` },
+    });
+    return unwrap(body);
+  },
+
   async me(): Promise<WapiUser> {
     return unwrap<WapiUser>(await request("/api/user"));
   },

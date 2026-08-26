@@ -6,6 +6,7 @@ import { wapi } from "@/lib/wapi";
 import { reply, clearHistory } from "@/lib/agent";
 import * as mentions from "@/lib/mentions";
 import * as stickers from "@/lib/stickers";
+import { ensureConnected } from "@/lib/session";
 
 /**
  * wapi webhook receiver — the only way inbound WhatsApp messages reach this app. wapi has no
@@ -79,6 +80,12 @@ async function handle({ event, data }: WebhookBody): Promise<void> {
    */
   if (event === "session.status") {
     console.log("[wapi] session.status", JSON.stringify(data));
+    /**
+     * The fast path back from a drop. The payload shape is undocumented, so nothing here reads
+     * it — `ensureConnected` re-checks `GET /api/status` itself and does nothing if the session
+     * turns out to be fine.
+     */
+    await ensureConnected("session.status webhook");
     return;
   }
 

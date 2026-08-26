@@ -27,6 +27,28 @@ export const config = {
 
   databaseUrl: () => required("DATABASE_URL"),
 
+  /**
+   * A Google service account, for writing to Sheets. Reading a public sheet needs nothing, but
+   * an API key cannot write — Google allows key auth for public reads only — so writes need
+   * this. Accepts the whole downloaded JSON, which is what you actually have in your hand.
+   */
+  googleServiceAccount: (): { clientEmail: string; privateKey: string } | null => {
+    const raw = optional("GOOGLE_SERVICE_ACCOUNT_JSON");
+    if (!raw) return null;
+    try {
+      const parsed = JSON.parse(raw) as { client_email?: string; private_key?: string };
+      if (!parsed.client_email || !parsed.private_key) return null;
+      return {
+        clientEmail: parsed.client_email,
+        // Env vars keep the newlines escaped; the key is unusable until they are real again.
+        privateKey: parsed.private_key.replace(/\\n/g, "\n"),
+      };
+    } catch {
+      console.warn("[config] GOOGLE_SERVICE_ACCOUNT_JSON is not valid JSON — ignoring it");
+      return null;
+    }
+  },
+
   /** Where this app is reachable, used to build the Notion OAuth redirect. */
   appUrl: () => (optional("APP_URL") ?? "https://wspbot.crafter.run").replace(/\/$/, ""),
 

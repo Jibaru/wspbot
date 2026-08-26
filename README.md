@@ -326,6 +326,35 @@ sunset that repository. The direct API costs one file and no infrastructure.
 Pinned to Notion API version `2026-03-11`. Versions are dated and response shapes change between
 them, so the header is explicit rather than left to a default.
 
+## Google Sheets
+
+Share a spreadsheet link and ask about it — *"what's missing?"*, *"who hasn't replied?"* — and
+the bot reads the rows and answers from them.
+
+**Reading a public sheet needs no setup.** The `/export?format=csv` endpoint serves any
+link-viewable sheet, so pasting a URL works immediately.
+
+**Writing needs a service account.** An API key authorises read-only access to public data and
+cannot write — not even to a sheet shared as "anyone with the link can edit". That is Google's
+rule, not a gap here. Set one up once:
+
+1. Google Cloud console → create a service account → add a JSON key
+2. Enable the Google Sheets API for that project
+3. Share each sheet with the service account's email as an **Editor**
+4. Paste the JSON into `GOOGLE_SERVICE_ACCOUNT_JSON` on one line
+
+With it configured the bot also *reads* through the API, which gives real tab names and A1
+ranges rather than one flattened CSV. Without it, the writing tools are not offered at all, and
+the bot is told to say so rather than pretend.
+
+Writes use `USER_ENTERED`, so a typed `=SUM(A1:A9)` becomes a formula and `5` becomes a number,
+exactly as if a person had typed it. `sheet_update` replaces a range, `sheet_append` adds rows at
+the end; the prompt pushes towards appending when either would do, since overwriting someone's
+data is not undoable from a chat.
+
+The JWT is signed with `node:crypto` rather than pulling in `googleapis` — an enormous dependency
+for one signature and three REST calls.
+
 ## Rate limiting
 
 One person may set the bot working **once a minute** by default. Over that, they get a short

@@ -25,6 +25,8 @@ services:
       # Only needed to price a model with no published rate built in.
       OPENAI_PRICE_INPUT: ${OPENAI_PRICE_INPUT}
       OPENAI_PRICE_OUTPUT: ${OPENAI_PRICE_OUTPUT}
+      # Optional: enables writing to Google Sheets. Reading a public sheet needs nothing.
+      GOOGLE_SERVICE_ACCOUNT_JSON: ${GOOGLE_SERVICE_ACCOUNT_JSON}
       # Notion is optional; unset, its tools are simply not offered.
       NOTION_CLIENT_ID: ${NOTION_CLIENT_ID}
       NOTION_CLIENT_SECRET: ${NOTION_CLIENT_SECRET}

@@ -74,6 +74,11 @@ const FEATURES: { title: string; detail: string }[] = [
     detail: "Tell it what one should be called and it can be asked for by that name afterwards.",
   },
   {
+    title: "Reads and writes spreadsheets",
+    detail:
+      "Share a Google Sheets link and ask what is missing, or have it fill something in. Reading a public sheet needs no setup.",
+  },
+  {
     title: "Connects to Notion",
     detail:
       "Ask it to connect and it sends a link. You choose which pages it may reach; after that it can search, read, write, work with databases and leave comments there.",

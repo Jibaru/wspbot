@@ -20,6 +20,7 @@ import * as usage from "./usage";
 import * as stickers from "./stickers";
 import * as notion from "./notion";
 import * as tasks from "./tasks";
+import * as sheets from "./sheets";
 import { toVoiceNote, VOICE_NOTE_MIMETYPE, VOICE_NOTE_FILENAME } from "./audio";
 import { fetchDecrypted } from "./inbound-media";
 import type { Media, Quoted } from "./mentions";
@@ -145,6 +146,11 @@ const systemPrompt = async (turn: Turn): Promise<string> => {
           "",
         ]
       : []),
+    "Google Sheets:",
+    "- When someone shares a spreadsheet link and asks about it, read it with `sheet_read` and answer from what is actually there. Do not guess at contents you have not read.",
+    `- ${config.googleServiceAccount() ? "You can write as well: `sheet_update` changes a specific range, `sheet_append` adds rows at the end. Read before writing so you target the right row, name what you are about to change, and prefer appending over overwriting when either would do." : "You can only read. If someone wants a change made, say that writing is not set up on this deployment rather than pretending to have done it."}`,
+    "- Answer questions like \"what is missing?\" by looking at the rows yourself and naming them, rather than describing the sheet in general terms.",
+    "",
     "The checklist:",
     "- This chat has a list of pending items, shown below. It is the same thing whether someone calls it a checklist, a task list, a to-do, *lista de tareas* or *pendientes*.",
     "- `add_tasks` puts things on it, `complete_tasks` ticks them off (or puts one back with undo), `remove_tasks` deletes something that should never have been there.",
@@ -694,6 +700,96 @@ const toolsFor = (turn: Turn, sent: string[]) => ({
       return parts.length ? `${parts.join(", ")}.` : "Nothing matched those ids.";
     },
   }),
+
+  sheet_read: tool({
+    description:
+      "Read a Google Sheet from its link. Use it whenever someone shares a spreadsheet URL and asks about its contents — what is missing, who has not replied, what the totals are. A publicly viewable sheet needs no setup.",
+    inputSchema: z.object({
+      url: z.string().describe("The Google Sheets link, pasted as given."),
+      range: z
+        .string()
+        .optional()
+        .describe(
+          "An A1 range like 'Sheet1!A1:D50', only if they asked for part of it. Omit for the whole tab.",
+        ),
+    }),
+    execute: async ({ url, range }) => {
+      try {
+        const { text, viaServiceAccount } = await sheets.read(url, range);
+        return viaServiceAccount ? text : `${text}\n\n(read publicly, one tab)`;
+      } catch (err) {
+        const why = err instanceof Error ? err.message : String(err);
+        console.error("[sheets] read failed", why);
+        return `Could not read that sheet: ${why}`;
+      }
+    },
+  }),
+
+  sheet_info: tool({
+    description:
+      "List the tabs in a Google Sheet, to find out what is in it before reading a specific one.",
+    inputSchema: z.object({ url: z.string().describe("The Google Sheets link.") }),
+    execute: async ({ url }) => {
+      try {
+        return await sheets.describe(url);
+      } catch (err) {
+        return `Could not open that sheet: ${err instanceof Error ? err.message : String(err)}`;
+      }
+    },
+  }),
+
+  ...(config.googleServiceAccount()
+    ? {
+        sheet_update: tool({
+          description:
+            "Write values into a specific range of a Google Sheet, replacing what is there. Read the sheet first so you know which row and column to target — writing over someone's data is not undoable from here.",
+          inputSchema: z.object({
+            url: z.string().describe("The Google Sheets link."),
+            range: z
+              .string()
+              .describe("The exact A1 range to overwrite, e.g. 'Sheet1!D2' or 'Sheet1!B2:B5'."),
+            values: z
+              .array(z.array(z.string()))
+              .describe(
+                'Rows of cells, matching the range shape. A single cell is [["yes"]]. Text starting with = becomes a formula.',
+              ),
+          }),
+          execute: async ({ url, range, values }) => {
+            try {
+              return await sheets.update(url, range, values);
+            } catch (err) {
+              const why = err instanceof Error ? err.message : String(err);
+              console.error("[sheets] update failed", why);
+              return `Could not write to that sheet: ${why}`;
+            }
+          },
+        }),
+
+        sheet_append: tool({
+          description:
+            "Add new rows to the end of a Google Sheet. Use this for adding an entry; use `sheet_update` to change something that is already there.",
+          inputSchema: z.object({
+            url: z.string().describe("The Google Sheets link."),
+            values: z
+              .array(z.array(z.string()))
+              .describe('Rows to add, each an array of cells in column order.'),
+            range: z
+              .string()
+              .optional()
+              .describe("Tab name, if it should not go on the one the link points at."),
+          }),
+          execute: async ({ url, values, range }) => {
+            try {
+              return await sheets.append(url, values, range);
+            } catch (err) {
+              const why = err instanceof Error ? err.message : String(err);
+              console.error("[sheets] append failed", why);
+              return `Could not add to that sheet: ${why}`;
+            }
+          },
+        }),
+      }
+    : {}),
 
   check_usage: tool({
     description:

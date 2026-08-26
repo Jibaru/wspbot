@@ -145,7 +145,7 @@ const ephemeralSticker = {
 console.log("\nstickers:");
 const sticker = mentions.parse(groupSticker as unknown as Record<string, unknown>);
 check("sticker is parsed at all", Boolean(sticker), true);
-check("sticker node captured", Boolean(sticker?.stickerNode), true);
+check("sticker node captured", sticker?.media?.kind, "sticker");
 // Collected, not answered: a bare sticker has nothing to reply to.
 check(
   "sticker does not trigger a reply",
@@ -153,10 +153,84 @@ check(
   false,
 );
 const eph = mentions.parse(ephemeralSticker as unknown as Record<string, unknown>);
-check("sticker inside ephemeral wrapper found", Boolean(eph?.stickerNode), true);
+check("sticker inside ephemeral wrapper found", eph?.media?.kind, "sticker");
 check(
-  "plain text carries no sticker node",
-  Boolean(mentions.parse(groupTagged as unknown as Record<string, unknown>)?.stickerNode),
+  "plain text carries no media",
+  Boolean(mentions.parse(groupTagged as unknown as Record<string, unknown>)?.media),
+  false,
+);
+
+/**
+ * Sticker sources. The animated flag is the subtle one: WhatsApp sends a "GIF" as an mp4 with
+ * gifPlayback, so it cannot be inferred from the mimetype.
+ */
+const withMedia = (message: Record<string, unknown>) => ({
+  key: {
+    remoteJid: "1203630@g.us",
+    participant: "5215512345678@s.whatsapp.net",
+    fromMe: false,
+    id: `MSG_${Math.floor(Math.random() * 1e9)}`,
+  },
+  pushName: "Ignacio",
+  message,
+});
+
+console.log("\nsticker sources:");
+for (const [label, message, wantKind, wantAnimated] of [
+  [
+    "photo with a tag",
+    {
+      imageMessage: {
+        mimetype: "image/jpeg",
+        caption: "@99887766 make this a sticker",
+        contextInfo: { mentionedJid: ["99887766@lid"] },
+      },
+    },
+    "image",
+    false,
+  ],
+  [
+    "WhatsApp GIF (mp4 + gifPlayback)",
+    { videoMessage: { mimetype: "video/mp4", gifPlayback: true, caption: "@99887766" } },
+    "video",
+    true,
+  ],
+  ["plain video", { videoMessage: { mimetype: "video/mp4" } }, "video", true],
+  [
+    "real .gif sent as a file",
+    { documentMessage: { mimetype: "image/gif", fileName: "cat.gif" } },
+    "document",
+    true,
+  ],
+  ["png", { imageMessage: { mimetype: "image/png" } }, "image", false],
+] as const) {
+  const p = mentions.parse(withMedia(message as Record<string, unknown>) as unknown as Record<string, unknown>);
+  check(`${label} → kind`, p?.media?.kind, wantKind);
+  check(`${label} → animated`, p?.media?.animated, wantAnimated);
+}
+
+// A tagged photo must still reach the model, since that is what triggers make_sticker.
+const taggedPhoto = mentions.parse(
+  withMedia({
+    imageMessage: {
+      mimetype: "image/jpeg",
+      caption: "@99887766 sticker please",
+      contextInfo: { mentionedJid: ["99887766@lid"] },
+    },
+  }) as unknown as Record<string, unknown>,
+);
+check(
+  "tagged photo triggers a reply",
+  taggedPhoto ? mentions.shouldReply(taggedPhoto, identity, false) : null,
+  true,
+);
+// An untagged photo is just someone sharing a picture; the bot stays out of it.
+const untaggedPhoto = mentions.parse(
+  withMedia({ imageMessage: { mimetype: "image/jpeg", caption: "look at this" } }) as unknown as Record<string, unknown>,
+);
+check(
+  "untagged photo ignored",
+  untaggedPhoto ? mentions.shouldReply(untaggedPhoto, identity, false) : null,
   false,
 );
 

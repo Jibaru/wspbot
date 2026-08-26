@@ -6,6 +6,9 @@ import { z } from "zod";
 import { config } from "./config";
 import { query } from "./db";
 import { wapi } from "./wapi";
+// Aliased: `toSticker` here already means "database row -> Sticker".
+import { toSticker as encodeSticker, firstFrame, StickerError } from "./sticker-maker";
+import type { Media } from "./mentions";
 
 /**
  * The sticker library.
@@ -135,6 +138,99 @@ const describe = async (
   }
 };
 
+/** Inbound media is encrypted; this is the only way to get at the actual bytes. */
+const fetchDecrypted = async (node: Record<string, unknown>): Promise<Buffer> => {
+  const temporaryUrl = await wapi.decryptMedia(node);
+  const res = await fetch(temporaryUrl);
+  if (!res.ok) throw new Error(`fetching decrypted media failed with ${res.status}`);
+  return Buffer.from(await res.arrayBuffer());
+};
+
+/**
+ * Upload, describe and record one finished sticker, reusing prior work when the same bytes
+ * have been seen before. Returns the row, or null if an identical sticker already existed.
+ */
+const store = async (
+  chat: string,
+  senderName: string,
+  bytes: Buffer,
+  describeFrom: Buffer,
+  presetLabel?: string,
+): Promise<{ sticker: Sticker; isNew: boolean } | null> => {
+  const sha256 = createHash("sha256").update(bytes).digest("hex");
+
+  const already = await query<Row>(
+    "select * from stickers where chat = $1 and sha256 = $2",
+    [chat, sha256],
+  );
+  if (already[0]) return { sticker: toSticker(already[0]), isNew: false };
+
+  /**
+   * Seen in another chat: reuse its permanent URL and description rather than paying for the
+   * upload and the vision call again. Only the row is per-chat, not the work.
+   */
+  const elsewhere = await query<Row>(
+    "select * from stickers where sha256 = $1 limit 1",
+    [sha256],
+  );
+
+  const { url, label, description } = elsewhere[0]
+    ? {
+        url: elsewhere[0].url,
+        label: elsewhere[0].label,
+        description: elsewhere[0].description,
+      }
+    : await (async () => {
+        // The decrypted URL expires in an hour, so the bytes need a permanent home.
+        const uploaded = await wapi.upload({
+          base64: bytes.toString("base64"),
+          mimetype: "image/webp",
+          fileName: "sticker.webp",
+        });
+        const described = presetLabel
+          ? { label: presetLabel, description: null as string | null }
+          : await describe(describeFrom);
+        return { url: uploaded, ...described };
+      })();
+
+  const inserted = await query<Row>(
+    `insert into stickers (chat, sha256, url, label, description, added_by)
+     values ($1, $2, $3, $4, $5, $6)
+     on conflict (chat, sha256) do nothing
+     returning *`,
+    [chat, sha256, url, label, description, senderName],
+  );
+
+  if (!inserted[0]) return null; // Lost a race with a concurrent delivery; already stored.
+  console.log(`[stickers] saved [${inserted[0].id}] ${label} from ${senderName}`);
+  return { sticker: toSticker(inserted[0]), isNew: true };
+};
+
+/**
+ * Build a sticker out of an image, GIF or video the person attached, then store it.
+ *
+ * Unlike `capture` this one throws: it runs from a tool call, and the person asked for it, so
+ * a failure needs to reach them rather than disappear into a log.
+ */
+export const createFrom = async (
+  chat: string,
+  senderName: string,
+  media: Media,
+  label?: string,
+): Promise<Sticker> => {
+  const source = await fetchDecrypted(media.node);
+  if (source.length === 0) throw new StickerError("the attachment came back empty");
+
+  const webp = await encodeSticker(source, media.animated);
+
+  // Vision models cannot read animated WebP, so describe a single rendered frame instead.
+  const forDescription = media.animated ? await firstFrame(source) : webp;
+
+  const result = await store(chat, senderName, webp, forDescription, label);
+  if (!result) throw new StickerError("could not save the sticker");
+  return result.sticker;
+};
+
 /**
  * Store a sticker that just arrived. Silent: never replies, and never throws into the webhook —
  * failing to keep a sticker must not cost the message it came with.
@@ -145,61 +241,18 @@ export const capture = async (
   stickerNode: Record<string, unknown>,
 ): Promise<Sticker | null> => {
   try {
-    const temporaryUrl = await wapi.decryptMedia(stickerNode);
-    const res = await fetch(temporaryUrl);
-    if (!res.ok) throw new Error(`fetching decrypted sticker failed with ${res.status}`);
-
-    const bytes = Buffer.from(await res.arrayBuffer());
+    const bytes = await fetchDecrypted(stickerNode);
+    if (bytes.length === 0 || bytes.length > MAX_BYTES) {
+      console.warn(`[stickers] skipping, ${bytes.length} bytes`);
+      return null;
+    }
     if (bytes.length === 0 || bytes.length > MAX_BYTES) {
       console.warn(`[stickers] skipping, ${bytes.length} bytes`);
       return null;
     }
 
-    const sha256 = createHash("sha256").update(bytes).digest("hex");
-
-    const already = await query<Row>(
-      "select * from stickers where chat = $1 and sha256 = $2",
-      [chat, sha256],
-    );
-    if (already[0]) return toSticker(already[0]);
-
-    /**
-     * Seen in another chat: reuse its permanent URL and description rather than paying for the
-     * upload and the vision call again. Only the row is per-chat, not the work.
-     */
-    const elsewhere = await query<Row>(
-      "select * from stickers where sha256 = $1 limit 1",
-      [sha256],
-    );
-
-    const { url, label, description } = elsewhere[0]
-      ? {
-          url: elsewhere[0].url,
-          label: elsewhere[0].label,
-          description: elsewhere[0].description,
-        }
-      : await (async () => {
-          // The decrypted URL expires in an hour, so the bytes need a permanent home.
-          const uploaded = await wapi.upload({
-            base64: bytes.toString("base64"),
-            mimetype: "image/webp",
-            fileName: "sticker.webp",
-          });
-          const described = await describe(bytes);
-          return { url: uploaded, ...described };
-        })();
-
-    const inserted = await query<Row>(
-      `insert into stickers (chat, sha256, url, label, description, added_by)
-       values ($1, $2, $3, $4, $5, $6)
-       on conflict (chat, sha256) do nothing
-       returning *`,
-      [chat, sha256, url, label, description, senderName],
-    );
-
-    if (!inserted[0]) return null; // Lost a race with a concurrent delivery; already stored.
-    console.log(`[stickers] saved [${inserted[0].id}] ${label} from ${senderName}`);
-    return toSticker(inserted[0]);
+    const result = await store(chat, senderName, bytes, bytes);
+    return result?.sticker ?? null;
   } catch (err) {
     console.error("[stickers] capture failed:", err instanceof Error ? err.message : err);
     return null;

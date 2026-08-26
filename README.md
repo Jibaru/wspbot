@@ -99,6 +99,7 @@ Beyond text, the bot decides for itself when one of these fits — you just ask 
 | "let's vote on Friday or Saturday" | posts a WhatsApp poll people can tap |
 | "link me the docs" | sends a bare URL, which WhatsApp expands into a preview |
 | "send the laughing cat sticker" | sends one of the stickers the chat has already used |
+| *(photo or GIF attached)* "@bot" | turns it into a sticker, animation intact, and keeps it |
 
 Notes on each:
 
@@ -136,6 +137,27 @@ Three things make that less trivial than it sounds:
 **Deduplicated by content hash.** The same sticker gets sent over and over; hashing the bytes
 means it is uploaded and described exactly once. A sticker already seen in another chat reuses
 that work and only adds a row.
+
+**Making them.** Send an image, a GIF or a short video, tag the bot, and it turns it into a
+sticker — sends it back and keeps it in the library. Animated sources stay animated.
+
+The awkward part is that **WhatsApp does not send GIFs as GIFs**. Picking one from the GIF tray
+produces a `videoMessage` with `gifPlayback: true` — an mp4. A real `.gif` shared as a file
+stays a GIF and arrives as a document instead. Both have to end up as animated WebP, so the
+"is it animated" decision comes from those signals rather than the mimetype.
+
+Conversion is ffmpeg (the only tool that reads JPEG, GIF *and* mp4 and writes animated WebP):
+
+```
+scale=512:512:force_original_aspect_ratio=decrease   fit inside 512x512, never distort
+format=rgba                                          give pad an alpha channel to work with
+pad=512:512:(ow-iw)/2:(oh-ih)/2:color=#00000000      centre on transparent, not black
+```
+
+Without `format=rgba` the padding comes out opaque black, which reads as a letterboxed photo
+rather than a sticker. Animations are capped at 6 seconds and re-encoded down a quality ladder
+until they fit WhatsApp's ceilings — 100KB static, 500KB animated — since an oversized sticker
+is rejected.
 
 **Sending.** The chat's stickers are listed in the system prompt with their descriptions, so the
 bot picks one the same way it recalls a fact — no lookup step. Ask for one, or let it reach for
@@ -176,9 +198,15 @@ failed. The bot's manners live in the system prompt in `lib/agent.ts`.
 ## Checks
 
 ```bash
-npm run smoke      # signature verification + "is this message for me?" — no keys needed
-npm run build      # typecheck and production build
+npm run smoke           # signature verification + "is this message for me?" — no keys needed
+npm run sticker-check   # real ffmpeg conversion: 512x512, animated, under size ceilings
+npm run build           # typecheck and production build
 ```
+
+`npm run sticker-check` needs ffmpeg on PATH. It builds a non-square video and image, runs them
+through `lib/sticker-maker`, and reads the WebP container back to confirm the canvas is 512x512,
+that animated input really produced ANIM/ANMF frames, and that the padding kept an alpha
+channel. `ffprobe` cannot parse animated WebP, which is why it inspects the chunks directly.
 
 `npm run smoke` is the one worth running after touching `lib/mentions.ts`: it drives group
 tagging, reply-to-bot, DMs, disappearing-message wrappers, own-message suppression, and both
@@ -212,6 +240,7 @@ app/api/wapi/webhook/route.ts    inbound: verify, ack, then reply
 lib/agent.ts                     the model turn: prompt, web search, memory tools
 lib/memory.ts                    facts, scoped per chat
 lib/stickers.ts                  the sticker library: decrypt, dedupe, describe, store
+lib/sticker-maker.ts             ffmpeg: anything -> 512x512 WebP, animation preserved
 lib/mentions.ts                  parsing WhatsApp message nodes, "is this for me?"
 lib/wapi.ts                      wapi REST client
 lib/signature.ts                 webhook signature verification

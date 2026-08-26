@@ -97,14 +97,14 @@ async function handle({ event, data }: WebhookBody): Promise<void> {
    * from what people already send. So the "is this for me?" gate cannot decide whether to look
    * at a message, only whether to reply to one.
    */
-  const willCapture = Boolean(message.stickerNode);
+  const willCapture = message.media?.kind === "sticker";
 
   // Claimed only when there is work to do, so ignored chatter does not fill the table.
   if (!willReply && !willCapture) return;
   if (!(await claim(message.messageId))) return;
 
   if (willCapture) {
-    await stickers.capture(message.chat, message.senderName, message.stickerNode!);
+    await stickers.capture(message.chat, message.senderName, message.media!.node);
   }
   if (!willReply) return;
 
@@ -124,6 +124,10 @@ async function handle({ event, data }: WebhookBody): Promise<void> {
     isGroup: message.isGroup,
     senderName: message.senderName,
     text: text || "(no text)",
+    // A sticker is collected, not raw material — everything else can become one.
+    ...(message.media && message.media.kind !== "sticker"
+      ? { attachment: message.media }
+      : {}),
   });
 
   /**

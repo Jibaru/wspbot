@@ -20,11 +20,23 @@ export type Inbound = {
   messageId: string;
   mentionedJids: string[];
   quotedSender?: string;
+  /** Attached media, when there is any. Absent for a plain text message. */
+  media?: Media;
+};
+
+export type Media = {
+  kind: "image" | "video" | "document" | "sticker";
   /**
-   * The unwrapped message node, present only when this message is a sticker. Handed to
-   * `decrypt-media` as-is — inbound media is encrypted, and the node carries the key.
+   * The unwrapped message node, handed to `decrypt-media` as-is — inbound media is encrypted,
+   * and this node carries the key that decrypts it.
    */
-  stickerNode?: Record<string, unknown>;
+  node: Record<string, unknown>;
+  /**
+   * Whether it moves. A WhatsApp "GIF" is an mp4 with `gifPlayback` set, never a real GIF, so
+   * this cannot be inferred from the mimetype alone.
+   */
+  animated: boolean;
+  mimetype?: string;
 };
 
 type Node = Record<string, unknown> | undefined;
@@ -64,6 +76,37 @@ const textOf = (node: Node): string => {
   return "";
 };
 
+/**
+ * Which attachment, if any, this message carries.
+ *
+ * The `animated` flag is the part worth care. WhatsApp does not send GIFs as GIFs — picking one
+ * from the GIF tray produces a `videoMessage` with `gifPlayback: true`. A real `.gif` shared as
+ * a file stays a GIF and shows up under `documentMessage` or `imageMessage` instead. Both must
+ * end up as animated stickers, so the flag is set from either signal.
+ */
+const mediaOf = (node: Node): Media | undefined => {
+  if (!node) return undefined;
+
+  const of = (key: string, kind: Media["kind"]): Media | undefined => {
+    const sub = asNode(node[key]);
+    if (!sub) return undefined;
+    const mimetype = typeof sub["mimetype"] === "string" ? sub["mimetype"] : undefined;
+    const animated =
+      sub["gifPlayback"] === true ||
+      sub["isAnimated"] === true ||
+      kind === "video" ||
+      (mimetype ?? "").includes("gif");
+    return { kind, node, animated, ...(mimetype ? { mimetype } : {}) };
+  };
+
+  return (
+    of("stickerMessage", "sticker") ??
+    of("imageMessage", "image") ??
+    of("videoMessage", "video") ??
+    of("documentMessage", "document")
+  );
+};
+
 /** `contextInfo` carries mentions and the quoted message; it hangs off whichever node is set. */
 const contextOf = (node: Node): Node => {
   if (!node) return undefined;
@@ -91,11 +134,11 @@ export const parse = (data: Record<string, unknown>): Inbound | null => {
 
   const node = unwrapMessage(asNode(data["message"]));
   const text = textOf(node);
-  const isSticker = Boolean(node && asNode(node["stickerMessage"]));
+  const media = mediaOf(node);
 
-  // A sticker carries no text, so text alone can no longer decide whether there is anything
-  // here worth looking at.
-  if (!text.trim() && !isSticker) return null;
+  // Media carries no text of its own, so text alone can no longer decide whether there is
+  // anything here worth looking at.
+  if (!text.trim() && !media) return null;
 
   const context = contextOf(node);
   const mentioned = context?.["mentionedJid"];
@@ -119,7 +162,7 @@ export const parse = (data: Record<string, unknown>): Inbound | null => {
       ? mentioned.filter((m): m is string => typeof m === "string")
       : [],
     ...(typeof quoted === "string" ? { quotedSender: quoted } : {}),
-    ...(isSticker && node ? { stickerNode: node } : {}),
+    ...(media ? { media } : {}),
   };
 };
 

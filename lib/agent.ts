@@ -13,6 +13,7 @@ import { query } from "./db";
 import { wapi } from "./wapi";
 import * as memory from "./memory";
 import * as stickers from "./stickers";
+import type { Media } from "./mentions";
 
 /**
  * The brain: one model turn per tagged message, with web search, memory, and the ability to
@@ -47,6 +48,8 @@ export type Turn = {
   isGroup: boolean;
   senderName: string;
   text: string;
+  /** Anything the person attached to the message that triggered this turn. */
+  attachment?: Media;
 };
 
 export type Reply = {
@@ -111,6 +114,12 @@ const systemPrompt = async (turn: Turn): Promise<string> => {
     "- When someone asks you to forget or drop something, call `forget` with the matching id.",
     "- The facts below are already in front of you. Answer from them directly — do not announce that you are checking your memory.",
     "",
+    ...(turn.attachment && turn.attachment.kind !== "sticker"
+      ? [
+          `They attached ${turn.attachment.animated ? "an animated GIF or video" : "an image"}. \`make_sticker\` turns it into a sticker for this chat — animation is kept. If they tagged you with it and did not ask for something else, a sticker is almost certainly what they want; just make it.`,
+          "",
+        ]
+      : []),
     `Today is ${new Date().toISOString().slice(0, 10)}.`,
     "",
     "Remembered for this chat:",
@@ -289,6 +298,40 @@ const toolsFor = (turn: Turn, sent: string[]) => ({
       }
     },
   }),
+
+  ...(turn.attachment && turn.attachment.kind !== "sticker"
+    ? {
+        make_sticker: tool({
+          description:
+            "Turn the image, GIF or video attached to this message into a WhatsApp sticker, send it, and add it to this chat's library. Animated sources stay animated. Only call this when something is actually attached.",
+          inputSchema: z.object({
+            label: z
+              .string()
+              .optional()
+              .describe(
+                "A two-to-four word name, only if the person asked for a specific one. Leave empty and it will be named automatically.",
+              ),
+          }),
+          execute: async ({ label }) => {
+            try {
+              const made = await stickers.createFrom(
+                turn.chat,
+                turn.senderName,
+                turn.attachment!,
+                label,
+              );
+              await wapi.send({ to: turn.chat, stickerUrl: made.url });
+              sent.push(`sticker (${made.label})`);
+              return `Made and sent "${made.label}", saved as ${made.id}.`;
+            } catch (err) {
+              const why = err instanceof Error ? err.message : String(err);
+              console.error("[make_sticker] failed", why);
+              return `Could not make the sticker: ${why}`;
+            }
+          },
+        }),
+      }
+    : {}),
 
   remember: tool({
     description:

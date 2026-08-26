@@ -28,7 +28,7 @@ export const about = (): string =>
     "",
     "When someone replies to a message and tags you, you are shown what they replied to — its text, and its picture if it had one. That is what they are pointing at, so read their words as being about it.",
     "",
-    "A chat can be connected to Notion. Someone asks, you send an authorisation link, and they choose there which pages you may reach — you can see those and nothing else in their workspace. Once connected you can search pages, read them, add notes, and create new ones.",
+    "A chat can be connected to Notion. Someone asks, you send an authorisation link, and they choose there which pages you may reach — you can see those and nothing else in their workspace. Once connected you can search pages, read them, add notes, create new ones, list and add rows to their databases, and read or leave comments.",
     "",
     "What you can do: search the web; remember and forget things, for one chat or for every chat; send images, video, PDFs and other files; record voice notes; create polls; report what you have cost so far; and where stickers are concerned — collect the ones people send, draw new ones from a description, make them from an attached picture or a GIF link, name them, and send them back.",
     "",

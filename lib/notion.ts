@@ -332,6 +332,247 @@ export const appendToPage = async (
   });
 };
 
+// ── databases ────────────────────────────────────────────────────────────
+
+/**
+ * Databases gained *data sources* in the 2025-09-03 API: one database can now hold several,
+ * each with its own schema. Rows are therefore queried on the data source, not the database, and
+ * a page created in a database is parented to a data source id.
+ *
+ * Search returns databases as `data_source` objects, so most of the time the id is already the
+ * right one; `dataSourceFor` covers the case where someone hands over a database id instead.
+ */
+export type DatabaseRef = { id: string; title: string; dataSourceId: string };
+
+export const findDatabases = async (
+  connection: Connection,
+  queryText: string,
+  limit = 10,
+): Promise<DatabaseRef[]> => {
+  const body = await request<{
+    results?: Array<{ id: string; title?: RichText[]; database_parent?: { database_id?: string } }>;
+  }>(connection, "/search", {
+    method: "POST",
+    body: JSON.stringify({
+      ...(queryText.trim() ? { query: queryText.trim() } : {}),
+      filter: { property: "object", value: "data_source" },
+      page_size: Math.min(limit, 25),
+    }),
+  });
+
+  return (body.results ?? []).map((source) => ({
+    // A data source's own id is what every row operation needs.
+    id: source.database_parent?.database_id ?? source.id,
+    dataSourceId: source.id,
+    title: (source.title ?? []).map((t) => t.plain_text ?? "").join("").trim() || "Untitled",
+  }));
+};
+
+/** Resolves a database id to its data source. Harmless if given a data source id already. */
+export const dataSourceFor = async (
+  connection: Connection,
+  databaseId: string,
+): Promise<string> => {
+  try {
+    const body = await request<{ data_sources?: Array<{ id: string }> }>(
+      connection,
+      `/databases/${encodeURIComponent(databaseId)}`,
+    );
+    const first = body.data_sources?.[0]?.id;
+    if (first) return first;
+  } catch {
+    // Not a database id — assume it is already a data source and let the caller's request fail
+    // with Notion's own message if it is neither.
+  }
+  return databaseId;
+};
+
+/** A row rendered as `Property: value` lines, which is what reads well in a chat. */
+const rowSummary = (page: NotionPage): string => {
+  const parts: string[] = [];
+  for (const [name, property] of Object.entries(page.properties ?? {})) {
+    const value = readProperty(property as Record<string, unknown>);
+    if (value) parts.push(`${name}: ${value}`);
+  }
+  return parts.join(" · ") || "(empty row)";
+};
+
+/** Only the property types people actually put in a task list; the rest are named, not guessed. */
+const readProperty = (property: Record<string, unknown>): string => {
+  const type = String(property["type"] ?? "");
+  const value = property[type];
+  switch (type) {
+    case "title":
+    case "rich_text":
+      return Array.isArray(value)
+        ? value.map((t) => (t as RichText).plain_text ?? "").join("")
+        : "";
+    case "number":
+      return value === null || value === undefined ? "" : String(value);
+    case "select":
+      return String((value as { name?: string } | null)?.name ?? "");
+    case "status":
+      return String((value as { name?: string } | null)?.name ?? "");
+    case "multi_select":
+      return Array.isArray(value)
+        ? value.map((v) => (v as { name?: string }).name ?? "").filter(Boolean).join(", ")
+        : "";
+    case "date":
+      return String((value as { start?: string } | null)?.start ?? "");
+    case "checkbox":
+      return value ? "yes" : "no";
+    case "people":
+      return Array.isArray(value) ? `${value.length} person(s)` : "";
+    case "url":
+    case "email":
+    case "phone_number":
+      return String(value ?? "");
+    default:
+      return "";
+  }
+};
+
+export const queryDatabase = async (
+  connection: Connection,
+  dataSourceId: string,
+  limit = 15,
+): Promise<string> => {
+  const body = await request<{ results?: NotionPage[] }>(
+    connection,
+    `/data_sources/${encodeURIComponent(dataSourceId)}/query`,
+    { method: "PATCH", body: JSON.stringify({ page_size: Math.min(limit, 50) }) },
+  );
+
+  const rows = body.results ?? [];
+  if (rows.length === 0) return "(no rows)";
+  return rows.map((row) => `- ${rowSummary(row)} (id: ${row.id})`).join("\n");
+};
+
+/**
+ * The schema, so a row can be added without guessing property names. Notion rejects a property
+ * that does not exist, and the names are rarely what anyone would guess.
+ */
+export const databaseSchema = async (
+  connection: Connection,
+  dataSourceId: string,
+): Promise<string> => {
+  const body = await request<{
+    properties?: Record<string, { type?: string; select?: { options?: Array<{ name: string }> } }>;
+  }>(connection, `/data_sources/${encodeURIComponent(dataSourceId)}`);
+
+  const lines = Object.entries(body.properties ?? {}).map(([name, property]) => {
+    const options = property.select?.options?.map((o) => o.name).join(" | ");
+    return `- "${name}" (${property.type}${options ? `: ${options}` : ""})`;
+  });
+  return lines.join("\n") || "(no properties)";
+};
+
+/**
+ * Values are given as plain strings and coerced to the property's real type here, because the
+ * model should not have to construct Notion's property shapes — that is where it goes wrong.
+ */
+const toPropertyValue = (type: string, value: string): unknown => {
+  switch (type) {
+    case "title":
+      return { title: [{ type: "text", text: { content: value.slice(0, 200) } }] };
+    case "rich_text":
+      return { rich_text: [{ type: "text", text: { content: value.slice(0, 1900) } }] };
+    case "number":
+      return { number: Number(value) };
+    case "select":
+      return { select: { name: value } };
+    case "status":
+      return { status: { name: value } };
+    case "multi_select":
+      return { multi_select: value.split(",").map((v) => ({ name: v.trim() })).filter((v) => v.name) };
+    case "date":
+      return { date: { start: value } };
+    case "checkbox":
+      return { checkbox: /^(true|yes|done|1)$/i.test(value) };
+    case "url":
+      return { url: value };
+    case "email":
+      return { email: value };
+    case "phone_number":
+      return { phone_number: value };
+    default:
+      return null;
+  }
+};
+
+export const addDatabaseRow = async (
+  connection: Connection,
+  dataSourceId: string,
+  values: Record<string, string>,
+): Promise<PageRef> => {
+  const schema = await request<{ properties?: Record<string, { type?: string }> }>(
+    connection,
+    `/data_sources/${encodeURIComponent(dataSourceId)}`,
+  );
+
+  const properties: Record<string, unknown> = {};
+  const unknown: string[] = [];
+  for (const [name, value] of Object.entries(values)) {
+    const type = schema.properties?.[name]?.type;
+    if (!type) {
+      unknown.push(name);
+      continue;
+    }
+    const built = toPropertyValue(type, value);
+    if (built) properties[name] = built;
+  }
+
+  if (unknown.length > 0) {
+    throw new NotionError(
+      `no such propert${unknown.length === 1 ? "y" : "ies"}: ${unknown.join(", ")}. Check the schema first.`,
+    );
+  }
+  if (Object.keys(properties).length === 0) {
+    throw new NotionError("none of those values matched a property in this database");
+  }
+
+  const page = await request<NotionPage>(connection, "/pages", {
+    method: "POST",
+    // A row is parented to the data source, not the database, since 2025-09-03.
+    body: JSON.stringify({
+      parent: { type: "data_source_id", data_source_id: dataSourceId },
+      properties,
+    }),
+  });
+  return { id: page.id, title: titleOf(page), ...(page.url ? { url: page.url } : {}) };
+};
+
+// ── comments ─────────────────────────────────────────────────────────────
+
+export const readComments = async (
+  connection: Connection,
+  pageId: string,
+): Promise<string> => {
+  const body = await request<{
+    results?: Array<{ rich_text?: RichText[]; created_time?: string }>;
+  }>(connection, `/comments?block_id=${encodeURIComponent(pageId)}`);
+
+  const comments = (body.results ?? []).map((c) => {
+    const text = (c.rich_text ?? []).map((t) => t.plain_text ?? "").join("").trim();
+    return `- ${text}${c.created_time ? ` (${c.created_time.slice(0, 10)})` : ""}`;
+  });
+  return comments.join("\n") || "(no comments)";
+};
+
+export const addComment = async (
+  connection: Connection,
+  pageId: string,
+  text: string,
+): Promise<void> => {
+  await request(connection, "/comments", {
+    method: "POST",
+    body: JSON.stringify({
+      parent: { page_id: pageId },
+      rich_text: [{ type: "text", text: { content: text.slice(0, 1900) } }],
+    }),
+  });
+};
+
 export const createPage = async (
   connection: Connection,
   parentPageId: string,

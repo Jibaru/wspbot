@@ -283,8 +283,8 @@ price it.
 ## Notion
 
 Someone says "connect Notion", the bot replies with a link, and Notion's own consent screen asks
-which pages to share. After that the bot can **search, read, append to and create pages** — only
-within what was shared.
+which pages to share. After that the bot can **search, read, append to and create pages**, **list and add rows to
+databases**, and **read or leave comments** — only within what was shared.
 
 That consent screen is the access control. The bot holds a token scoped to exactly the pages the
 person picked, and can see nothing else in the workspace.
@@ -310,6 +310,18 @@ With those unset the Notion tools are not offered at all, rather than offered an
 Without that, anyone who found the callback URL could bind their own workspace to someone else's
 conversation — the state carries which chat is connecting, so it has to be unforgeable rather
 than merely opaque. `npm run smoke` covers the tampering cases.
+
+**Databases go through data sources.** Since the 2025-09-03 API a database can hold several data
+sources, each with its own schema, so rows are queried at `/data_sources/:id/query` and a new row
+is parented to a data source id rather than a database id. Column values are given to the bot as
+plain strings and coerced to Notion's property shapes here — the model should not be constructing
+`{"select":{"name":...}}` by hand, which is where it goes wrong.
+
+**Not Notion's MCP server, deliberately.** The hosted one at `mcp.notion.com` requires an
+interactive OAuth flow per user and does not support non-interactive authorization, so it cannot
+use the per-chat tokens this bot already holds. The open-source `notion-mcp-server` does support
+per-request tokens, but it would mean running another public service and Notion has said it may
+sunset that repository. The direct API costs one file and no infrastructure.
 
 Pinned to Notion API version `2026-03-11`. Versions are dated and response shapes change between
 them, so the header is explicit rather than left to a default.

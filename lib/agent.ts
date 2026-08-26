@@ -136,7 +136,8 @@ const systemPrompt = async (turn: Turn): Promise<string> => {
           notionConnection
             ? `- This chat is connected to Notion${notionConnection.workspaceName ? ` (${notionConnection.workspaceName})` : ""}. You can only see pages that were explicitly shared with you, so if something is missing, say that rather than assuming it does not exist.`
             : "- This chat is not connected to Notion. If someone asks you to connect it, or wants you to read or write something there, use `connect_notion` and send them the link.",
-          "- Always find a page with `notion_search` before reading or writing. Page ids come from there and nowhere else — never invent one.",
+          "- Always find things first: `notion_search` for pages, `notion_find_database` for task lists and trackers. Ids come from those and nowhere else — never invent one.",
+          "- Adding to a database needs the exact column names, so read it with `notion_read_database` before adding a row unless you already saw the columns this turn.",
           "- Writing to someone's notes is not reversible from here. When a request is vague about where something should go, ask which page first.",
           "",
         ]
@@ -505,6 +506,96 @@ const toolsFor = (turn: Turn, sent: string[]) => ({
             try {
               await notion.appendToPage(connection, pageId, text);
               return "Added to the page.";
+            } catch (err) {
+              return notionFailure(err);
+            }
+          },
+        }),
+
+        notion_find_database: tool({
+          description:
+            "Find databases (task lists, trackers, tables) in the connected Notion workspace. Use this before reading or adding rows — it returns the id every other database tool needs.",
+          inputSchema: z.object({
+            query: z.string().describe("Words from the database name. Empty lists all of them."),
+          }),
+          execute: async ({ query: q }) => {
+            const connection = await notion.connectionFor(turn.chat);
+            if (!connection) return NOT_CONNECTED;
+            try {
+              const found = await notion.findDatabases(connection, q);
+              if (found.length === 0) return "No databases were shared with this connection.";
+              return found.map((d) => `- ${d.title} (id: ${d.dataSourceId})`).join("\n");
+            } catch (err) {
+              return notionFailure(err);
+            }
+          },
+        }),
+
+        notion_read_database: tool({
+          description:
+            "List the rows of a Notion database, and its columns. Use it to answer questions about a task list or tracker. Call `notion_find_database` first for the id.",
+          inputSchema: z.object({
+            databaseId: z.string().describe("The id from notion_find_database."),
+          }),
+          execute: async ({ databaseId }) => {
+            const connection = await notion.connectionFor(turn.chat);
+            if (!connection) return NOT_CONNECTED;
+            try {
+              const dataSourceId = await notion.dataSourceFor(connection, databaseId);
+              const [schema, rows] = await Promise.all([
+                notion.databaseSchema(connection, dataSourceId),
+                notion.queryDatabase(connection, dataSourceId),
+              ]);
+              return `Columns:\n${schema}\n\nRows:\n${rows}`;
+            } catch (err) {
+              return notionFailure(err);
+            }
+          },
+        }),
+
+        notion_add_row: tool({
+          description:
+            "Add a row to a Notion database — a task, an entry, a record. Give values as plain strings keyed by the exact column names; read the database first if you do not know them, because a wrong name is rejected.",
+          inputSchema: z.object({
+            databaseId: z.string().describe("The id from notion_find_database."),
+            values: z
+              .record(z.string(), z.string())
+              .describe(
+                'Column name to value, e.g. {"Name": "Buy milk", "Status": "To do", "Due": "2026-09-01"}. Dates are YYYY-MM-DD.',
+              ),
+          }),
+          execute: async ({ databaseId, values }) => {
+            const connection = await notion.connectionFor(turn.chat);
+            if (!connection) return NOT_CONNECTED;
+            try {
+              const dataSourceId = await notion.dataSourceFor(connection, databaseId);
+              const row = await notion.addDatabaseRow(connection, dataSourceId, values);
+              return `Added "${row.title}".${row.url ? ` ${row.url}` : ""}`;
+            } catch (err) {
+              return notionFailure(err);
+            }
+          },
+        }),
+
+        notion_comments: tool({
+          description:
+            "Read the comments on a Notion page, or add one. Adding a comment is the polite way to leave a remark on someone else's page without editing it.",
+          inputSchema: z.object({
+            pageId: z.string().describe("The page id from notion_search."),
+            add: z
+              .string()
+              .optional()
+              .describe("A comment to leave. Omit to just read the existing ones."),
+          }),
+          execute: async ({ pageId, add }) => {
+            const connection = await notion.connectionFor(turn.chat);
+            if (!connection) return NOT_CONNECTED;
+            try {
+              if (add?.trim()) {
+                await notion.addComment(connection, pageId, add);
+                return "Comment added.";
+              }
+              return await notion.readComments(connection, pageId);
             } catch (err) {
               return notionFailure(err);
             }

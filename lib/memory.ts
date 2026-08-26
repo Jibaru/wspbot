@@ -99,10 +99,11 @@ export const clear = async (chat?: string): Promise<number> => {
 /** Rendered into the system prompt, so the bot recalls without having to call a tool first. */
 export const render = (memories: Memory[]): string =>
   memories.length === 0
-    ? "(nothing remembered for this chat yet)"
+    ? "(nothing remembered yet)"
     : memories
         .map(
           (m) =>
-            `- [${m.id}] ${m.text}${m.author ? ` — said by ${m.author}` : ""} (${m.createdAt.toISOString().slice(0, 10)})`,
+            // Marked so the model can tell a fact about this room from one that applies to all.
+            `- [${m.id}]${m.chat === GLOBAL ? " (everywhere)" : ""} ${m.text}${m.author ? ` — said by ${m.author}` : ""} (${m.createdAt.toISOString().slice(0, 10)})`,
         )
         .join("\n");

@@ -202,6 +202,18 @@ are sent.
 
 Everything collected is shown on `/`.
 
+## What it knows about itself
+
+Ask it what it runs on, how it works, or who made it, and it answers from `lib/about.ts` rather
+than inventing something plausible — where it is deployed, that WhatsApp reaches it by webhook
+because wapi cannot be polled, which model is thinking, how voice notes and stickers are built,
+and that it was made by Jibaru of Crafter Station (jibaru.dev).
+
+That description lives in code, not in the database, because it describes the deployment: it
+should change in the same commit the deployment does. A fact about the architecture kept in a
+table goes stale silently. It is also read out to whoever asks, so nothing secret goes in it, and
+the bot is told never to reveal keys, environment values or another chat's contents.
+
 ## Memory
 
 Facts are scoped to the chat they were told in — the bot sits in shared rooms, and something
@@ -211,6 +223,12 @@ every turn, so recall never depends on the model deciding to look something up.
 In a chat, just say it: *"remember that standup moved to 9"*, *"forget that"*. The bot writes
 through the `remember` and `forget` tools and confirms in one line. Everything it knows is
 listed on `/`.
+
+**Global facts.** Some things hold no matter who is talking — a standing instruction about how
+the bot should behave, or something about the bot itself. Those are saved with scope
+`everywhere`, are shown in every chat marked `(everywhere)`, and survive restarts and redeploys
+like any other row. The bot is told to reserve that scope for facts that are genuinely
+chat-independent; anything about the people in a room stays in that room.
 
 `/reset` in a chat clears the running conversation but keeps the memories.
 
@@ -281,6 +299,7 @@ lib/memory.ts                    facts, scoped per chat
 lib/stickers.ts                  the sticker library: decrypt, dedupe, describe, store
 lib/sticker-maker.ts             ffmpeg: anything -> 512x512 WebP, animation preserved
 lib/fetch-media.ts               guarded remote downloads (SSRF, redirects, size cap)
+lib/about.ts                     what the bot knows about itself
 lib/audio.ts                     TTS output -> Ogg/Opus, the voice-note format
 lib/ffmpeg.ts                    shared ffmpeg runner and scratch directories
 lib/mentions.ts                  parsing WhatsApp message nodes, "is this for me?"

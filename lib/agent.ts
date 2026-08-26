@@ -12,6 +12,7 @@ import { config } from "./config";
 import { query } from "./db";
 import { wapi } from "./wapi";
 import * as memory from "./memory";
+import { about } from "./about";
 import * as stickers from "./stickers";
 import { toVoiceNote, VOICE_NOTE_MIMETYPE, VOICE_NOTE_FILENAME } from "./audio";
 import type { Media } from "./mentions";
@@ -119,16 +120,19 @@ const systemPrompt = async (turn: Turn): Promise<string> => {
     "- Also remember durable facts about this chat that were clearly meant to stick (decisions, deadlines, preferences). Do not remember passing chatter.",
     "- When someone asks you to forget or drop something, call `forget` with the matching id.",
     "- The facts below are already in front of you. Answer from them directly — do not announce that you are checking your memory.",
+    "- Facts marked (everywhere) are known in every chat, and survive restarts and redeploys. Save one that way — scope 'everywhere' — only when it holds no matter who is talking: a standing instruction about how you should behave, or something about you rather than about this room. Anything about the people here stays in this chat.",
     "",
     ...(turn.attachment && turn.attachment.kind !== "sticker"
       ? [
-          `They attached ${turn.attachment.animated ? "an animated GIF or video" : "an image"}. \`make_sticker\` turns it into a sticker for this chat — animation is kept. If they tagged you with it and did not ask for something else, a sticker is almost certainly what they want; just make it.`,
+          `They attached ${turn.attachment.animated ? "an animated GIF or video" : "an image"}. \`make_sticker\` turns it into a sticker — animation is kept, and it joins the shared library. If they tagged you with it and did not ask for something else, a sticker is almost certainly what they want; just make it.`,
           "",
         ]
       : []),
+    about(),
+    "",
     `Today is ${new Date().toISOString().slice(0, 10)}.`,
     "",
-    "Remembered for this chat:",
+    "Remembered:",
     memories,
     "",
     "Sticker library (shared by every chat):",
@@ -393,16 +397,29 @@ const toolsFor = (turn: Turn, sent: string[]) => ({
 
   remember: tool({
     description:
-      "Store one fact for this chat so it can be recalled in later conversations. One fact per call. Write it as a self-contained sentence — it will be read back with no surrounding context.",
+      "Store one fact so it can be recalled in later conversations, including after a restart. One fact per call. Write it as a self-contained sentence — it will be read back with no surrounding context.",
     inputSchema: z.object({
       text: z
         .string()
         .describe("The fact to remember, phrased so it still makes sense weeks later."),
+      scope: z
+        .enum(["this chat", "everywhere"])
+        .optional()
+        .describe(
+          "'this chat' (the default) keeps it to this conversation. 'everywhere' makes it known in every chat — use it only for things that are true regardless of who is talking, such as who built you or a standing instruction about how to behave.",
+        ),
     }),
-    execute: async ({ text }) => {
-      const saved = await memory.add(turn.chat, text, turn.senderName);
-      console.log(`remembered [${saved.id}] ${saved.text}`);
-      return `Saved as ${saved.id}.`;
+    execute: async ({ text, scope }) => {
+      const everywhere = scope === "everywhere";
+      const saved = await memory.add(
+        everywhere ? memory.GLOBAL : turn.chat,
+        text,
+        turn.senderName,
+      );
+      console.log(
+        `remembered [${saved.id}]${everywhere ? " (everywhere)" : ""} ${saved.text}`,
+      );
+      return `Saved as ${saved.id}${everywhere ? ", known in every chat" : ""}.`;
     },
   }),
 

@@ -82,6 +82,9 @@ like a simplification opportunity.
 - **The Notion OAuth `state` must stay signed.** It carries which chat is connecting; forgeable,
   it would let anyone who found the callback bind their workspace to someone else's conversation.
   `lib/oauth-state.ts` is deliberately free of `server-only` so `npm run smoke` can test it.
+- **Usage is billed in three different units** — language calls per token, speech per character,
+  images per image — so `lib/usage.ts` groups by kind. Lumping them together let an unpriced
+  image model void the entire cost estimate, which read as "cost unknown" for everything.
 - **Groups only, and only when tagged.** DMs are ignored by default (`BOT_REPLY_TO_DMS`).
   Stickers are the sole exception: collected untagged, silently, never answered.
 
@@ -111,6 +114,8 @@ npm run smoke           # signature verification + "is this for me?" — no keys
 npm run sticker-check   # real ffmpeg conversion + the SSRF guard (needs ffmpeg)
 npm run voice-check     # voice notes really are Ogg/Opus mono 48kHz, per ffprobe
 npm run draw-check      # one real image generation, checks alpha survives (costs money)
+npm run models-check    # run after ANY model change: does the tier accept tools, vision,
+                        # effort, verbosity and a transparent background? (costs money)
 npm run build           # typecheck + production build
 ```
 

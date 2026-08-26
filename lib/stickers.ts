@@ -197,7 +197,7 @@ const describe = async (
 ): Promise<{ label: string; description: string | null }> => {
   try {
     const result = await generateObject({
-      model: openai(config.model()),
+      model: openai(config.visionModel()),
       schema: z.object({
         label: z
           .string()
@@ -216,13 +216,14 @@ const describe = async (
               type: "text",
               text: "This is a WhatsApp sticker. Name it and describe it so someone could ask for it later by meaning — the emotion it conveys matters more than fine visual detail.",
             },
-            { type: "image", image: bytes, mediaType: "image/webp" },
+            // A `file` part, not `image`: the image part type is deprecated in the SDK.
+            { type: "file", data: bytes, mediaType: "image/webp" },
           ],
         },
       ],
     });
     const object = result.object;
-    await usage.record({ kind: "vision", model: config.model(), usage: result.usage });
+    await usage.record({ kind: "vision", model: config.visionModel(), usage: result.usage });
     return { label: object.label.trim(), description: object.description.trim() };
   } catch (err) {
     console.warn("[stickers] could not describe:", err instanceof Error ? err.message : err);

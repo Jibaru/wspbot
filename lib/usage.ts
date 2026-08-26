@@ -82,12 +82,15 @@ export type Totals = {
   outputTokens: number;
   cachedTokens: number;
   characters: number;
-  /** null when no rate is known for the models involved. */
+  /** Images drawn. Billed per image, not per token, so they are counted rather than priced. */
+  images: number;
+  /** null when no rate is known for the language models involved. */
   estimatedUsd: number | null;
 };
 
 type Row = {
   model: string;
+  kind: string;
   calls: string;
   input_tokens: string;
   output_tokens: string;
@@ -95,10 +98,15 @@ type Row = {
   characters: string;
 };
 
-/** Grouped by model, because that is what makes a cost estimate possible at all. */
+/**
+ * Grouped by model *and* kind, because the three kinds are billed in different units: language
+ * calls per token, speech per character, images per image. Lumping them together produced a
+ * subtly wrong picture — an image model has no per-token rate, so its rows alone were enough to
+ * void the whole estimate, which read as "cost unknown" for everything.
+ */
 const totalsSince = async (interval: string): Promise<Totals> => {
   const rows = await query<Row>(
-    `select model,
+    `select model, kind,
             count(*)                  as calls,
             sum(input_tokens)::text   as input_tokens,
             sum(output_tokens)::text  as output_tokens,
@@ -106,7 +114,7 @@ const totalsSince = async (interval: string): Promise<Totals> => {
             sum(characters)::text     as characters
        from model_usage
       where at > now() - $1::interval
-      group by model`,
+      group by model, kind`,
     [interval],
   );
 
@@ -116,21 +124,31 @@ const totalsSince = async (interval: string): Promise<Totals> => {
     outputTokens: 0,
     cachedTokens: 0,
     characters: 0,
+    images: 0,
     estimatedUsd: 0,
   };
   let priced = true;
 
   for (const row of rows) {
+    const calls = Number(row.calls);
+    totals.calls += calls;
+
+    if (row.kind === "image") {
+      totals.images += calls;
+      continue;
+    }
+    if (row.kind === "speech") {
+      totals.characters += Number(row.characters ?? 0);
+      continue;
+    }
+
     const input = Number(row.input_tokens ?? 0);
     const output = Number(row.output_tokens ?? 0);
-    totals.calls += Number(row.calls);
     totals.inputTokens += input;
     totals.outputTokens += output;
     totals.cachedTokens += Number(row.cached_tokens ?? 0);
-    totals.characters += Number(row.characters ?? 0);
 
     const rate = rateFor(row.model);
-    // Speech rows carry no tokens, so an unpriced speech model costs the estimate nothing.
     if (!rate && input + output > 0) priced = false;
     if (rate && totals.estimatedUsd !== null) {
       totals.estimatedUsd += (input / 1e6) * rate.input + (output / 1e6) * rate.output;
@@ -176,8 +194,13 @@ export const report = async (): Promise<string> => {
     line("Today", today),
     line("Last 7 days", week),
     line("All time", allTime),
+    // Both are billed in their own units, so they sit outside the token figures rather than
+    // being folded in at a made-up conversion.
     allTime.characters > 0
-      ? `Voice notes: ${thousands(allTime.characters)} characters spoken (billed separately, not counted above).`
+      ? `Voice notes: ${thousands(allTime.characters)} characters spoken, billed separately.`
+      : "",
+    allTime.images > 0
+      ? `Stickers drawn: ${allTime.images}, billed per image and not included above.`
       : "",
   ]
     .filter(Boolean)

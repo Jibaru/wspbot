@@ -354,7 +354,9 @@ insert into memories (chat, text) values ('global', 'the office wifi password is
 
 | Variable | Default | Notes |
 | --- | --- | --- |
-| `BOT_MODEL` | `gpt-5.6` | Any model your account can reach on the Responses API. |
+| `BOT_MODEL` | `gpt-5.6` | The gpt-5.6 tiers are capability-identical; `-terra` is ~60% cheaper than `-sol`, `-luna` ~96%. |
+| `BOT_VISION_MODEL` | `BOT_MODEL` | Naming a sticker is narrow work and can run on a cheaper tier. |
+| `BOT_IMAGE_MODEL` | `gpt-image-1` | Must support a transparent background. `-mini` is ~80% cheaper. |
 | `BOT_EFFORT` | `low` | Reasoning depth. Raise it if answers feel shallow, at the cost of latency. |
 | `BOT_REPLY_TO_DMS` | `false` | Answer one-to-one chats too. Groups always require a tag regardless. |
 
@@ -367,6 +369,7 @@ failed. The bot's manners live in the system prompt in `lib/agent.ts`.
 npm run smoke           # signature verification + "is this message for me?" — no keys needed
 npm run sticker-check   # real ffmpeg conversion: 512x512, animated, under size ceilings
 npm run voice-check     # voice notes really are Ogg/Opus mono 48kHz, per ffprobe
+npm run models-check    # the configured models accept the parameters this app sends (costs money)
 npm run draw-check      # generates one real image and checks alpha survives (costs money)
 npm run build           # typecheck and production build
 ```

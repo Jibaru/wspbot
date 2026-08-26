@@ -7,7 +7,7 @@ import {
   type ModelMessage,
   type UserContent,
   type TextPart,
-  type ImagePart,
+  type FilePart,
 } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { z } from "zod";
@@ -771,7 +771,7 @@ const buildUserContent = async (turn: Turn): Promise<UserContent> => {
   if (!turn.quoted) return said;
 
   const { text, media } = turn.quoted;
-  const parts: Array<TextPart | ImagePart> = [];
+  const parts: Array<TextPart | FilePart> = [];
   const describe =
     media && !text.trim()
       ? `(replying to ${media.kind === "sticker" ? "a sticker" : `${media.animated ? "an animated " : "a "}${media.kind}`})`
@@ -783,9 +783,10 @@ const buildUserContent = async (turn: Turn): Promise<UserContent> => {
   if (media && (media.kind === "image" || media.kind === "sticker") && !media.animated) {
     try {
       const bytes = await fetchDecrypted(media.node);
+      // A `file` part, not `image`: the image part type is deprecated in the SDK.
       parts.push({
-        type: "image",
-        image: bytes,
+        type: "file",
+        data: bytes,
         mediaType: media.mimetype ?? "image/jpeg",
       });
     } catch (err) {

@@ -19,6 +19,11 @@ services:
       WAPI_SESSION_ID: ${WAPI_SESSION_ID}
       BOT_REPLY_TO_DMS: ${BOT_REPLY_TO_DMS}
       BOT_IMAGE_MODEL: ${BOT_IMAGE_MODEL}
+      # Naming a sticker is a narrow task, so it can run on a cheaper tier than replies.
+      BOT_VISION_MODEL: ${BOT_VISION_MODEL}
+      # Only needed to price a model with no published rate built in.
+      OPENAI_PRICE_INPUT: ${OPENAI_PRICE_INPUT}
+      OPENAI_PRICE_OUTPUT: ${OPENAI_PRICE_OUTPUT}
       # Notion is optional; unset, its tools are simply not offered.
       NOTION_CLIENT_ID: ${NOTION_CLIENT_ID}
       NOTION_CLIENT_SECRET: ${NOTION_CLIENT_SECRET}

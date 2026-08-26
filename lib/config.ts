@@ -46,6 +46,13 @@ export const config = {
   /** Image model for drawing stickers. gpt-image-* supports transparent backgrounds. */
   imageModel: () => optional("BOT_IMAGE_MODEL") ?? "gpt-image-1",
 
+  /**
+   * Model for looking at a sticker and naming it. A narrow, bounded task, so it is worth
+   * pointing at something cheaper than the conversational model. Falls back to that model when
+   * unset, which is the safe default rather than the cheap one.
+   */
+  visionModel: () => optional("BOT_VISION_MODEL") ?? optional("BOT_MODEL") ?? "gpt-5.6",
+
   /** Reasoning depth. Low keeps a chat bot snappy; raise it if answers feel shallow. */
   effort: () => optional("BOT_EFFORT") ?? "low",
 

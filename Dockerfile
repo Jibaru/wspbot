@@ -25,7 +25,9 @@ WORKDIR /app
 # not — a difference invisible until someone tries it on a phone.
 RUN apk add --no-cache ffmpeg \
  && ffmpeg -hide_banner -encoders | grep -q libwebp \
- && ffmpeg -hide_banner -encoders | grep -q libopus
+ && ffmpeg -hide_banner -encoders | grep -q libopus \
+ && ffmpeg -hide_banner -encoders | grep -q libx264 \
+ && ffmpeg -hide_banner -encoders | grep -qw aac
 
 ENV NODE_ENV=production
 # Next binds to localhost without this, and Traefik would get a connection refused.

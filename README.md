@@ -141,6 +141,15 @@ Notes on each:
 - **Files, images, video, PDFs** go out by URL — the bot sends a link it actually found, and is
   told never to invent one. Documents always carry a filename, because a document without one
   arrives named after its URL.
+- **Video is re-encoded before sending, never forwarded by URL.** Being *a video* is not enough:
+  WhatsApp plays H.264 in an MP4 with AAC audio, and VP9/Opus in WebM, HEVC or AV1 arrive as a
+  thumbnail that never starts — on web and mobile alike. Everything is transcoded to
+  H.264 baseline / yuv420p / AAC with `+faststart`, scaled to 720p or below, capped at 3 minutes
+  and 16MB. `npm run video-check` asserts each of those with ffprobe.
+- **Everything sent by URL is fetched first**, then re-hosted on wapi. That applies the SSRF
+  guard, catches a link to an HTML *page* — the commonest mistake, and previously sent as a
+  broken file — and means a hotlink-protected or short-lived source cannot break the message
+  later.
 - **Voice notes** are generated with OpenAI TTS, re-encoded to **Ogg/Opus, mono, 48kHz**, then
   uploaded to wapi for a permanent URL. That encoding is the format, not a preference: mp3 plays
   in WhatsApp Web — a browser decodes whatever the OS can — and the mobile app refuses it, so
@@ -455,6 +464,7 @@ failed. The bot's manners live in the system prompt in `lib/agent.ts`.
 npm run smoke           # signature verification + "is this message for me?" — no keys needed
 npm run sticker-check   # real ffmpeg conversion: 512x512, animated, under size ceilings
 npm run voice-check     # voice notes really are Ogg/Opus mono 48kHz, per ffprobe
+npm run video-check     # video really is H.264/yuv420p/AAC in MP4, per ffprobe
 npm run models-check    # the configured models accept the parameters this app sends (costs money)
 npm run draw-check      # generates one real image and checks alpha survives (costs money)
 npm run build           # typecheck and production build
@@ -506,6 +516,7 @@ lib/notion.ts                    Notion OAuth and the page operations
 lib/oauth-state.ts               the signed state that binds a connection to a chat
 lib/usage.ts                     token accounting and the cost estimate
 lib/audio.ts                     TTS output -> Ogg/Opus, the voice-note format
+lib/video.ts                     anything -> H.264/AAC MP4, the format that plays
 lib/ffmpeg.ts                    shared ffmpeg runner and scratch directories
 lib/mentions.ts                  parsing WhatsApp message nodes, "is this for me?"
 lib/wapi.ts                      wapi REST client

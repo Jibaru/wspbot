@@ -23,6 +23,8 @@ import * as tasks from "./tasks";
 import * as sheets from "./sheets";
 import { toVoiceNote, VOICE_NOTE_MIMETYPE, VOICE_NOTE_FILENAME } from "./audio";
 import { fetchDecrypted } from "./inbound-media";
+import { fetchMedia } from "./fetch-media";
+import { toWhatsAppVideo } from "./video";
 import type { Media, Quoted } from "./mentions";
 
 /**
@@ -238,7 +240,7 @@ const toolsFor = (turn: Turn, sent: string[]) => ({
 
   send_media: tool({
     description:
-      "Send a file into this chat from a URL: an image, a video, a PDF or any other document. The URL must already exist and be publicly reachable — one you found by searching, or one the person gave you. Never guess a URL.",
+      "Send a file into this chat from a URL: an image, a video, a PDF or any other document. The link must point at the file itself, not at a page showing it — a YouTube or article page will be refused. Video is re-encoded so it plays everywhere, which takes a few seconds. Never guess a URL.",
     inputSchema: z.object({
       kind: z
         .enum(["image", "video", "document", "audio"])
@@ -263,16 +265,44 @@ const toolsFor = (turn: Turn, sent: string[]) => ({
         return "A document needs a fileName. Call again with one, e.g. 'guide.pdf'.";
       }
       try {
+        /**
+         * Fetched here rather than handed to wapi as a URL. Three things come from that: the
+         * SSRF guard applies, a link to an HTML *page* is caught and explained instead of being
+         * sent as a broken file, and — for video — the bytes can be re-encoded.
+         */
+        const { bytes, contentType } = await fetchMedia(url);
+
+        /**
+         * Video is re-encoded rather than forwarded. Being a video is not enough: WhatsApp plays
+         * H.264/AAC in MP4, and VP9, HEVC or AV1 arrive as a thumbnail that never starts — on
+         * web and mobile alike.
+         */
+        const payload =
+          kind === "video"
+            ? { data: await toWhatsAppVideo(bytes), mimetype: "video/mp4", name: "video.mp4" }
+            : {
+                data: bytes,
+                mimetype: contentType || "application/octet-stream",
+                name: fileName ?? "file",
+              };
+
+        // Re-hosted on wapi, so a hotlink-protected or short-lived source URL cannot break it.
+        const hosted = await wapi.upload({
+          base64: payload.data.toString("base64"),
+          mimetype: payload.mimetype,
+          fileName: payload.name,
+        });
+
         const input =
           kind === "image"
-            ? { to: turn.chat, imageUrl: url, ...(caption ? { text: caption } : {}) }
+            ? { to: turn.chat, imageUrl: hosted, ...(caption ? { text: caption } : {}) }
             : kind === "video"
-              ? { to: turn.chat, videoUrl: url, ...(caption ? { text: caption } : {}) }
+              ? { to: turn.chat, videoUrl: hosted, ...(caption ? { text: caption } : {}) }
               : kind === "audio"
-                ? { to: turn.chat, audioUrl: url }
+                ? { to: turn.chat, audioUrl: hosted }
                 : {
                     to: turn.chat,
-                    documentUrl: url,
+                    documentUrl: hosted,
                     fileName: fileName!,
                     ...(caption ? { text: caption } : {}),
                   };

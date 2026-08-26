@@ -88,6 +88,9 @@ like a simplification opportunity.
 - **The rate-limit check must stay before the model call**, not after. It exists to avoid
   spending money on the eleventh message in a minute, so moving it later defeats it entirely.
   Refused calls are not recorded, or the window never drains.
+- **Video must be re-encoded, not forwarded.** H.264 baseline / yuv420p / AAC in MP4 is what
+  plays; VP9, HEVC and AV1 show a thumbnail that never starts, on every client. Same class as the
+  voice-note bug and equally invisible locally. `npm run video-check` asserts it with ffprobe.
 - **Groups only, and only when tagged.** DMs are ignored by default (`BOT_REPLY_TO_DMS`).
   Stickers are the sole exception: collected untagged, silently, never answered.
 
@@ -117,6 +120,7 @@ npm run smoke           # signature verification + "is this for me?" — no keys
 npm run sticker-check   # real ffmpeg conversion + the SSRF guard (needs ffmpeg)
 npm run voice-check     # voice notes really are Ogg/Opus mono 48kHz, per ffprobe
 npm run draw-check      # one real image generation, checks alpha survives (costs money)
+npm run video-check     # video really is H.264/yuv420p/AAC in MP4, per ffprobe
 npm run models-check    # run after ANY model change: does the tier accept tools, vision,
                         # effort, verbosity and a transparent background? (costs money)
 npm run build           # typecheck + production build

@@ -55,6 +55,11 @@ const FEATURES: { title: string; detail: string }[] = [
       "Tag it with an image, GIF or short video, or give it a GIF link. Animation is preserved.",
   },
   {
+    title: "Draws stickers",
+    detail:
+      "Ask for a sticker of something that does not exist and it draws one, on a transparent background.",
+  },
+  {
     title: "Names stickers",
     detail: "Tell it what one should be called and it can be asked for by that name afterwards.",
   },

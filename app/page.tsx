@@ -22,6 +22,11 @@ const FEATURES: { title: string; detail: string }[] = [
       "In groups only, when @-mentioned or when you reply to one of its messages. Direct chats are ignored, and so is everything else.",
   },
   {
+    title: "Follows what you point at",
+    detail:
+      "Reply to any message and tag it, and it reads what you replied to — the text, and the picture if there is one. “What does this mean?” works.",
+  },
+  {
     title: "Searches the web",
     detail:
       "For anything current or specific enough that being wrong would matter — not for things it already knows.",

@@ -5,6 +5,9 @@ import {
   stepCountIs,
   tool,
   type ModelMessage,
+  type UserContent,
+  type TextPart,
+  type ImagePart,
 } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { z } from "zod";
@@ -16,7 +19,8 @@ import { about } from "./about";
 import * as usage from "./usage";
 import * as stickers from "./stickers";
 import { toVoiceNote, VOICE_NOTE_MIMETYPE, VOICE_NOTE_FILENAME } from "./audio";
-import type { Media } from "./mentions";
+import { fetchDecrypted } from "./inbound-media";
+import type { Media, Quoted } from "./mentions";
 
 /**
  * The brain: one model turn per tagged message, with web search, memory, and the ability to
@@ -56,6 +60,12 @@ export type Turn = {
   text: string;
   /** Anything the person attached to the message that triggered this turn. */
   attachment?: Media;
+  /**
+   * The message being replied to, when this was a reply. Tagging the bot in a reply is how
+   * someone points at something, and the words alone rarely carry it: "@bot what does this
+   * mean?" means nothing without the thing.
+   */
+  quoted?: Quoted;
 };
 
 export type Reply = {
@@ -125,9 +135,15 @@ const systemPrompt = async (turn: Turn): Promise<string> => {
     "- The facts below are already in front of you. Answer from them directly — do not announce that you are checking your memory.",
     "- Facts marked (everywhere) are known in every chat, and survive restarts and redeploys. Save one that way — scope 'everywhere' — only when it holds no matter who is talking: a standing instruction about how you should behave, or something about you rather than about this room. Anything about the people here stays in this chat.",
     "",
-    ...(turn.attachment && turn.attachment.kind !== "sticker"
+    ...(turn.quoted
       ? [
-          `They attached ${turn.attachment.animated ? "an animated GIF or video" : "an image"}. \`make_sticker\` turns it into a sticker — animation is kept, and it joins the shared library. If they tagged you with it and did not ask for something else, a sticker is almost certainly what they want; just make it.`,
+          "They are replying to an earlier message, and it is included above their own. That is what they are pointing at — read their words as being about it. If they attached a picture to the reply, that message is quoted for you too, and any image in it is shown to you directly.",
+          "",
+        ]
+      : []),
+    ...(stickerSource(turn)
+      ? [
+          `There is ${stickerSource(turn)!.animated ? "an animated GIF or video" : "an image"} here — ${turn.attachment ? "attached to their message" : "in the message they are replying to"}. \`make_sticker\` turns it into a sticker, keeping any animation, and adds it to the shared library. If they tagged you with it and did not ask for something else, a sticker is almost certainly what they want; just make it.`,
           "",
         ]
       : []),
@@ -141,6 +157,19 @@ const systemPrompt = async (turn: Turn): Promise<string> => {
     "Sticker library (shared by every chat):",
     stickerList,
   ].join("\n");
+};
+
+/**
+ * What a sticker could be made from this turn: the message's own attachment, or failing that
+ * the message it replies to. Something already a sticker is skipped — it is collected
+ * automatically, and re-encoding it would only make a worse copy.
+ */
+const stickerSource = (turn: Turn): Media | undefined => {
+  const own = turn.attachment;
+  if (own && own.kind !== "sticker") return own;
+  const quoted = turn.quoted?.media;
+  if (quoted && quoted.kind !== "sticker") return quoted;
+  return undefined;
 };
 
 /** Guards against the model passing a data: URI, a relative path, or something invented. */
@@ -385,11 +414,16 @@ const toolsFor = (turn: Turn, sent: string[]) => ({
     },
   }),
 
-  ...(turn.attachment && turn.attachment.kind !== "sticker"
+  /**
+   * Available when there is a picture to work from, whether attached to this message or to the
+   * one being replied to. "@bot make this a sticker" as a reply to someone else's photo is the
+   * commoner of the two, and the media lives in the quoted copy there.
+   */
+  ...(stickerSource(turn)
     ? {
         make_sticker: tool({
           description:
-            "Turn the image, GIF or video attached to this message into a WhatsApp sticker, send it, and add it to the shared library. Animated sources stay animated. Only call this when something is actually attached.",
+            "Turn the image, GIF or video into a WhatsApp sticker, send it, and add it to the shared library. Works on whatever is attached to this message, or on the message being replied to. Animated sources stay animated.",
           inputSchema: z.object({
             label: z
               .string()
@@ -403,7 +437,7 @@ const toolsFor = (turn: Turn, sent: string[]) => ({
               const made = await stickers.createFrom(
                 turn.chat,
                 turn.senderName,
-                turn.attachment!,
+                stickerSource(turn)!,
                 label,
               );
               await wapi.send({ to: turn.chat, stickerUrl: made.url });
@@ -489,9 +523,50 @@ const toolsFor = (turn: Turn, sent: string[]) => ({
   }),
 });
 
-export const reply = async (turn: Turn): Promise<Reply> => {
+/**
+ * Builds the user turn, folding in whatever is being pointed at.
+ *
+ * A quoted image is fetched and passed as an actual image part rather than described, because
+ * "@bot what does this say?" about a screenshot is unanswerable from a description. Fetching it
+ * is best-effort: a failure downgrades to a mention of what was there, which still beats losing
+ * the reply.
+ */
+const buildUserContent = async (turn: Turn): Promise<UserContent> => {
   // In a group, who is speaking changes the answer, so it has to be in the message itself.
-  const content = turn.isGroup ? `${turn.senderName}: ${turn.text}` : turn.text;
+  const said = turn.isGroup ? `${turn.senderName}: ${turn.text}` : turn.text;
+  if (!turn.quoted) return said;
+
+  const { text, media } = turn.quoted;
+  const parts: Array<TextPart | ImagePart> = [];
+  const describe =
+    media && !text.trim()
+      ? `(replying to ${media.kind === "sticker" ? "a sticker" : `${media.animated ? "an animated " : "a "}${media.kind}`})`
+      : `(replying to: "${text.trim()}")`;
+
+  parts.push({ type: "text", text: `${describe}\n\n${said}` });
+
+  // Only stills can be shown to the model; a video or a document is named, not opened.
+  if (media && (media.kind === "image" || media.kind === "sticker") && !media.animated) {
+    try {
+      const bytes = await fetchDecrypted(media.node);
+      parts.push({
+        type: "image",
+        image: bytes,
+        mediaType: media.mimetype ?? "image/jpeg",
+      });
+    } catch (err) {
+      console.warn(
+        "[quoted] could not fetch the quoted image:",
+        err instanceof Error ? err.message : err,
+      );
+    }
+  }
+
+  return parts;
+};
+
+export const reply = async (turn: Turn): Promise<Reply> => {
+  const content = await buildUserContent(turn);
   const history = await loadHistory(turn.chat);
   const sent: string[] = [];
 
@@ -528,10 +603,18 @@ export const reply = async (turn: Turn): Promise<Reply> => {
   const answer =
     text || (sent.length > 0 ? "" : "Sorry, I got tangled up. Try asking me again?");
 
-  // History records what happened, not just what was said, so "send that again" has a referent.
+  /**
+   * History records what happened, not just what was said, so "send that again" has a referent.
+   * Only the text of the turn is kept — replaying a quoted image on every later turn would
+   * re-bill it forever, and the answer it produced is already in the transcript.
+   */
   await saveTurn(
     turn.chat,
-    content,
+    typeof content === "string"
+      ? content
+      : content
+          .map((p) => (p.type === "text" ? p.text : "[image]"))
+          .join(" "),
     [answer, sent.length ? `(sent: ${sent.join(", ")})` : ""]
       .filter(Boolean)
       .join(" ") || "(no reply)",

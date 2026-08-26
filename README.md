@@ -103,6 +103,9 @@ same way. This is the only reason a tunnel ever enters the picture — deployed,
 ## When it replies
 
 - **Groups** — when `@`-tagged, or when someone replies to one of its messages.
+- **Replies carry their target.** Tag it in a reply and it reads the message you replied to —
+  the text, and the image itself if there was one. "@bot what does this say?" pointed at a
+  screenshot works, because the picture is passed to the model rather than described.
 - **Stickers** — collected silently in any group, without a tag. See below.
 - **Direct messages** — ignored. A one-to-one chat has no tagging convention, so answering
   there means answering everything sent to it. Set `BOT_REPLY_TO_DMS=true` if you want that.
@@ -126,6 +129,8 @@ Beyond text, the bot decides for itself when one of these fits — you just ask 
 | "link me the docs" | sends a bare URL, which WhatsApp expands into a preview |
 | "send the laughing cat sticker" | sends one of the stickers the chat has already used |
 | *(photo or GIF attached)* "@bot" | turns it into a sticker, animation intact, and keeps it |
+| *(replying to a photo)* "@bot what is this?" | reads the replied-to message, and looks at its picture |
+| *(replying to a photo)* "@bot make this a sticker" | uses the photo from the message you replied to |
 | "make a sticker of a sleepy capybara" | draws one, transparent background, and keeps it |
 | "make a sticker from <gif link>" | downloads it and converts it, animation intact |
 

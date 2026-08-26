@@ -74,6 +74,9 @@ like a simplification opportunity.
 - **A drawn sticker needs `background: "transparent"`.** Without it the image comes back on a
   white card and looks broken beside real stickers — and nothing in a typecheck catches that.
   `npm run draw-check` generates one and verifies the alpha channel survives.
+- **A reply carries a full copy of what it replies to**, in `contextInfo.quotedMessage` — keys
+  included, so quoted media decrypts exactly like a top-level attachment. That copy is the whole
+  point of a reply: the words rarely carry the meaning without it.
 - **Groups only, and only when tagged.** DMs are ignored by default (`BOT_REPLY_TO_DMS`).
   Stickers are the sole exception: collected untagged, silently, never answered.
 
@@ -89,6 +92,9 @@ like a simplification opportunity.
 - Schema changes go in the idempotent DDL in `lib/db.ts`, which runs on first query. **A throw
   there kills every request**, so verify a migration against a real database before deploying, and
   guard destructive steps so they run exactly once.
+- A new capability updates **both** feature lists: `FEATURES` in `app/page.tsx` (for people) and
+  the capability sentence in `lib/about.ts` (for the model). The second is prose in a file nobody
+  renders, so it rots silently — the bot then undersells itself when asked what it can do.
 - `lib/about.ts` describes the deployment, so it lives in code rather than the database — it
   should change in the same commit the deployment does. Nothing secret goes in it; it is read
   aloud to whoever asks.

@@ -234,6 +234,66 @@ check(
   false,
 );
 
+/**
+ * Replies. Tagging the bot in a reply is how someone points at something, so the quoted message
+ * has to survive parsing — text and media alike.
+ */
+console.log("\nreplies (the thing being pointed at):");
+
+const replyTo = (quotedMessage: Record<string, unknown>, text: string) =>
+  withMedia({
+    extendedTextMessage: {
+      text,
+      contextInfo: {
+        mentionedJid: ["99887766@lid"],
+        participant: "5219998887777@s.whatsapp.net",
+        quotedMessage,
+      },
+    },
+  });
+
+const quotedText = mentions.parse(
+  replyTo({ conversation: "the meeting is at 4pm on Thursday" }, "@99887766 is that right?") as unknown as Record<string, unknown>,
+);
+check("quoted text captured", quotedText?.quoted?.text, "the meeting is at 4pm on Thursday");
+check("quoted author captured", quotedText?.quoted?.sender, "5219998887777@s.whatsapp.net");
+check("reply still answers", quotedText ? mentions.shouldReply(quotedText, identity, false) : null, true);
+
+const quotedPhoto = mentions.parse(
+  replyTo(
+    { imageMessage: { mimetype: "image/jpeg", caption: "look" } },
+    "@99887766 what is this?",
+  ) as unknown as Record<string, unknown>,
+);
+check("quoted image captured", quotedPhoto?.quoted?.media?.kind, "image");
+check("quoted image not animated", quotedPhoto?.quoted?.media?.animated, false);
+// The reply itself has no attachment; the picture is only in the quoted copy.
+check("reply carries no media of its own", Boolean(quotedPhoto?.media), false);
+
+const quotedGif = mentions.parse(
+  replyTo(
+    { videoMessage: { mimetype: "video/mp4", gifPlayback: true } },
+    "@99887766 sticker please",
+  ) as unknown as Record<string, unknown>,
+);
+check("quoted GIF captured as animated", quotedGif?.quoted?.media?.animated, true);
+
+// A quoted message inside a disappearing wrapper must still be readable.
+const quotedInEphemeral = mentions.parse(
+  replyTo(
+    { ephemeralMessage: { message: { conversation: "hidden but quoted" } } },
+    "@99887766 ?",
+  ) as unknown as Record<string, unknown>,
+);
+check("quoted ephemeral unwrapped", quotedInEphemeral?.quoted?.text, "hidden but quoted");
+
+// A plain tagged message is not a reply, and must not invent one.
+check(
+  "non-reply has no quoted content",
+  Boolean(mentions.parse(groupTagged as unknown as Record<string, unknown>)?.quoted),
+  false,
+);
+
 const parsed = mentions.parse(
   groupTagged as unknown as Record<string, unknown>,
 )!;

@@ -22,6 +22,22 @@ export type Inbound = {
   quotedSender?: string;
   /** Attached media, when there is any. Absent for a plain text message. */
   media?: Media;
+  /**
+   * The message being replied to, when this is a reply.
+   *
+   * Someone tagging the bot in a reply is pointing at something — "@bot what does this mean?"
+   * carries none of its meaning in the words. WhatsApp embeds a copy of the quoted message in
+   * `contextInfo.quotedMessage`, so the thing being pointed at travels with the pointer.
+   */
+  quoted?: Quoted;
+};
+
+export type Quoted = {
+  text: string;
+  /** Who wrote the quoted message, when known. */
+  sender?: string;
+  /** Media in the quoted message — an embedded copy, decryptable like any other. */
+  media?: Media;
 };
 
 export type Media = {
@@ -146,6 +162,22 @@ export const parse = (data: Record<string, unknown>): Inbound | null => {
   const participant = key?.["participant"] ?? key?.["participantAlt"];
   const quoted = context?.["participant"];
 
+  /**
+   * The replied-to message. WhatsApp embeds a copy rather than a reference, so it is parsed
+   * exactly like a top-level message — same wrappers, same media shapes.
+   */
+  const quotedNode = unwrapMessage(asNode(context?.["quotedMessage"]));
+  const quotedMedia = mediaOf(quotedNode);
+  const quotedText = textOf(quotedNode);
+  const quotedContent: Quoted | undefined =
+    quotedNode && (quotedText.trim() || quotedMedia)
+      ? {
+          text: quotedText,
+          ...(typeof quoted === "string" ? { sender: quoted } : {}),
+          ...(quotedMedia ? { media: quotedMedia } : {}),
+        }
+      : undefined;
+
   return {
     chat,
     sender:
@@ -163,6 +195,7 @@ export const parse = (data: Record<string, unknown>): Inbound | null => {
       : [],
     ...(typeof quoted === "string" ? { quotedSender: quoted } : {}),
     ...(media ? { media } : {}),
+    ...(quotedContent ? { quoted: quotedContent } : {}),
   };
 };
 

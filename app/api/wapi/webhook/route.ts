@@ -135,6 +135,8 @@ async function handle({ event, data }: WebhookBody): Promise<void> {
     ...(message.media && message.media.kind !== "sticker"
       ? { attachment: message.media }
       : {}),
+    // What they are replying to, if anything: the thing their words are about.
+    ...(message.quoted ? { quoted: message.quoted } : {}),
   });
 
   /**

@@ -10,6 +10,7 @@ import { wapi } from "./wapi";
 import { toSticker as encodeSticker, firstFrame, StickerError } from "./sticker-maker";
 import type { Media } from "./mentions";
 import { fetchMedia, looksAnimated } from "./fetch-media";
+import { fetchDecrypted } from "./inbound-media";
 import * as usage from "./usage";
 
 /**
@@ -227,14 +228,6 @@ const describe = async (
     console.warn("[stickers] could not describe:", err instanceof Error ? err.message : err);
     return { label: "sticker", description: null };
   }
-};
-
-/** Inbound media is encrypted; this is the only way to get at the actual bytes. */
-const fetchDecrypted = async (node: Record<string, unknown>): Promise<Buffer> => {
-  const temporaryUrl = await wapi.decryptMedia(node);
-  const res = await fetch(temporaryUrl);
-  if (!res.ok) throw new Error(`fetching decrypted media failed with ${res.status}`);
-  return Buffer.from(await res.arrayBuffer());
 };
 
 /**

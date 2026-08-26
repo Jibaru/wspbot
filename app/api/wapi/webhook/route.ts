@@ -7,6 +7,7 @@ import { reply, clearHistory } from "@/lib/agent";
 import * as mentions from "@/lib/mentions";
 import * as stickers from "@/lib/stickers";
 import { ensureConnected } from "@/lib/session";
+import * as rateLimit from "@/lib/rate-limit";
 
 /**
  * wapi webhook receiver — the only way inbound WhatsApp messages reach this app. wapi has no
@@ -114,6 +115,29 @@ async function handle({ event, data }: WebhookBody): Promise<void> {
     await stickers.capture(message.chat, message.senderName, message.media!.node);
   }
   if (!willReply) return;
+
+  /**
+   * The quota check sits here deliberately: after "is this for me?", before anything that costs
+   * money. A refused message never reaches the model, a search or an image generation.
+   *
+   * Keyed on the sender rather than the chat, so one person cannot use up a group's allowance —
+   * and normalised, since the same person arrives as a phone JID or a LID depending on the day.
+   */
+  const decision = await rateLimit.check(
+    mentions.identityKey(message.sender),
+    message.chat,
+  );
+  if (!decision.allowed) {
+    console.log(
+      `[rate-limit] ${message.senderName} refused, ${decision.waitSeconds}s to wait`,
+    );
+    if (decision.shouldReply) {
+      await wapi.sendText(message.chat, rateLimit.refusalMessage(decision), {
+        ...(message.isGroup ? { mentions: [message.sender] } : {}),
+      });
+    }
+    return;
+  }
 
   // Best effort — blue ticks are not worth failing a reply over.
   await wapi.markRead(message.key).catch(() => {});

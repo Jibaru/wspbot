@@ -18,6 +18,7 @@ services:
       WAPI_PAT: ${WAPI_PAT}
       WAPI_SESSION_ID: ${WAPI_SESSION_ID}
       BOT_REPLY_TO_DMS: ${BOT_REPLY_TO_DMS}
+      BOT_RATE_LIMIT_PER_MINUTE: ${BOT_RATE_LIMIT_PER_MINUTE}
       BOT_IMAGE_MODEL: ${BOT_IMAGE_MODEL}
       # Naming a sticker is a narrow task, so it can run on a cheaper tier than replies.
       BOT_VISION_MODEL: ${BOT_VISION_MODEL}

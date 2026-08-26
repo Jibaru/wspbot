@@ -326,6 +326,37 @@ sunset that repository. The direct API costs one file and no infrastructure.
 Pinned to Notion API version `2026-03-11`. Versions are dated and response shapes change between
 them, so the header is explicit rather than left to a default.
 
+## Rate limiting
+
+One person may set the bot working **once a minute** by default. Over that, they get a short
+refusal — *"You exceeded the limit of 1 message per minute. Wait 43 seconds."* — and the model is
+never called. The check runs after "is this for me?" and before anything that costs money, which
+is the whole point of it.
+
+A **sliding window**, not fixed buckets: with buckets someone can spend their whole allowance at
+11:59:59 and again at 12:00:00 and never be stopped. The wait is exact rather than a rounded
+minute — it is when the quota-th most recent call leaves the window.
+
+**They are told once per window**, not once per message. Ten messages get one refusal; otherwise
+the limiter becomes worse spam than the thing it is limiting.
+
+**Refused calls do not count**, or someone hammering the bot would hold their own window
+permanently full and never recover.
+
+**Per-person quotas live in the `rate_limits` table**, edited by hand. There is deliberately no
+tool for it — a bot that raises your limit because you asked nicely is not a rate limiter.
+
+```sql
+-- Ten a minute for one person. The key is the phone number or LID without the device suffix.
+insert into rate_limits (user_id, per_minute, note) values ('51922471582', 10, 'me')
+  on conflict (user_id) do update set per_minute = excluded.per_minute, updated_at = now();
+
+-- Back to the default.
+delete from rate_limits where user_id = '51922471582';
+```
+
+`BOT_RATE_LIMIT_PER_MINUTE` changes the default for everyone not listed there.
+
 ## The checklist
 
 Each chat has a list of pending items. Say it however you say it — *checklist*, *task list*,
@@ -384,6 +415,7 @@ insert into memories (chat, text) values ('global', 'the office wifi password is
 | `BOT_IMAGE_MODEL` | `gpt-image-1` | Must support a transparent background. `-mini` is ~80% cheaper. |
 | `BOT_EFFORT` | `low` | Reasoning depth. Raise it if answers feel shallow, at the cost of latency. |
 | `BOT_REPLY_TO_DMS` | `false` | Answer one-to-one chats too. Groups always require a tag regardless. |
+| `BOT_RATE_LIMIT_PER_MINUTE` | `1` | Default allowance per person. Override individuals in the `rate_limits` table. |
 
 Replies are requested at low verbosity — a WhatsApp message that needs scrolling has already
 failed. The bot's manners live in the system prompt in `lib/agent.ts`.

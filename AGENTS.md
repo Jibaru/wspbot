@@ -85,6 +85,9 @@ like a simplification opportunity.
 - **Usage is billed in three different units** — language calls per token, speech per character,
   images per image — so `lib/usage.ts` groups by kind. Lumping them together let an unpriced
   image model void the entire cost estimate, which read as "cost unknown" for everything.
+- **The rate-limit check must stay before the model call**, not after. It exists to avoid
+  spending money on the eleventh message in a minute, so moving it later defeats it entirely.
+  Refused calls are not recorded, or the window never drains.
 - **Groups only, and only when tagged.** DMs are ignored by default (`BOT_REPLY_TO_DMS`).
   Stickers are the sole exception: collected untagged, silently, never answered.
 

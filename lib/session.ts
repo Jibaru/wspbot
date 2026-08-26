@@ -1,6 +1,7 @@
 import "server-only";
 import { config } from "./config";
 import { wapi } from "./wapi";
+import { prune } from "./rate-limit";
 
 /**
  * Keeping the WhatsApp session connected.
@@ -126,6 +127,8 @@ export const startWatchdog = (): void => {
 
   const timer = setInterval(() => {
     void ensureConnected("periodic check");
+    // Piggy-backed on an existing tick rather than given a timer of its own.
+    void prune();
   }, CHECK_INTERVAL_MS);
 
   // Never hold the process open on our account.

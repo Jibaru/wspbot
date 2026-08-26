@@ -131,6 +131,31 @@ const migrate = async (): Promise<void> => {
      * screen, exactly which pages that room may reach.
      */
     /*
+     * Rate limiting. Two tables: what each person is allowed, and what they have actually done.
+     *
+     * rate_limits is meant to be edited by hand — there is no tool for it on purpose, since
+     * raising your own quota by asking the bot would defeat the point.
+     */
+    create table if not exists rate_limits (
+      user_id    text primary key,
+      per_minute integer     not null,
+      note       text,
+      updated_at timestamptz not null default now()
+    );
+
+    create table if not exists bot_calls (
+      id      bigserial primary key,
+      user_id text        not null,
+      chat    text,
+      -- 'call' counts against the quota; 'warned' records that we already said so, so a
+      -- spammer gets one reply per window rather than one per message.
+      kind    text        not null default 'call',
+      at      timestamptz not null default now()
+    );
+    -- The window query runs on every tagged message, so it gets its own index.
+    create index if not exists bot_calls_user_at_idx on bot_calls (user_id, kind, at desc);
+
+    /*
      * The chat's checklist. Per chat, like memories: a group's pending list belongs to that
      * group, and one shared list across rooms would be nonsense.
      */

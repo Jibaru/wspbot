@@ -141,6 +141,16 @@ const contextOf = (node: Node): Node => {
 const numeric = (jid: string): string =>
   (jid.split("@")[0] ?? "").split(":")[0] ?? "";
 
+/**
+ * A stable key for one person, for anything that has to recognise them across messages — rate
+ * limiting, for instance. Strips the device suffix, which changes between messages.
+ *
+ * It cannot unify a LID with a phone number: they are different identifiers for the same human
+ * and neither is derivable from the other. Someone appearing under both would get an allowance
+ * under each, which is a limitation rather than a hole — it takes two identities to abuse.
+ */
+export const identityKey = (jid: string): string => numeric(jid) || jid;
+
 export const parse = (data: Record<string, unknown>): Inbound | null => {
   const key = asNode(data["key"]);
   const chat = key?.["remoteJid"];

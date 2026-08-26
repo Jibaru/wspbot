@@ -57,6 +57,15 @@ export const config = {
   effort: () => optional("BOT_EFFORT") ?? "low",
 
   /**
+   * Calls one person may make per minute before being turned away. Per-person overrides live in
+   * the `rate_limits` table; this is only the fallback for anyone not listed there.
+   */
+  defaultRateLimit: () => {
+    const value = Number(optional("BOT_RATE_LIMIT_PER_MINUTE"));
+    return Number.isFinite(value) && value > 0 ? Math.floor(value) : 1;
+  },
+
+  /**
    * Off by default: the bot is a group tool, and a one-to-one chat has no tagging convention to
    * signal when it is wanted, so it would answer everything anyone sent it.
    */

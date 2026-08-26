@@ -27,6 +27,11 @@ const FEATURES: { title: string; detail: string }[] = [
       "Reply to any message and tag it, and it reads what you replied to — the text, and the picture if there is one. “What does this mean?” works.",
   },
   {
+    title: "Reacts with emoji",
+    detail:
+      "Taps a 👍 or 🎉 onto a message instead of sending one — no notification, nothing added to the chat.",
+  },
+  {
     title: "Searches the web",
     detail:
       "For anything current or specific enough that being wrong would matter — not for things it already knows.",

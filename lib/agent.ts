@@ -13,7 +13,7 @@ import { openai } from "@ai-sdk/openai";
 import { z } from "zod";
 import { config } from "./config";
 import { query } from "./db";
-import { wapi } from "./wapi";
+import { wapi, type MessageKey } from "./wapi";
 import * as memory from "./memory";
 import { about } from "./about";
 import * as usage from "./usage";
@@ -71,6 +71,10 @@ export type Turn = {
    * mean?" means nothing without the thing.
    */
   quoted?: Quoted;
+  /** The message that triggered this turn, so it can be reacted to. */
+  messageKey?: MessageKey;
+  /** The message being replied to, when its key can be reconstructed. */
+  quotedKey?: MessageKey;
 };
 
 export type Reply = {
@@ -133,6 +137,7 @@ const systemPrompt = async (turn: Turn): Promise<string> => {
     "- `draw_sticker` invents a new sticker from a description and sends it. Use it when someone wants a sticker of something that does not exist yet. When they want a specific meme, a real person, or an existing picture, search for it and use `sticker_from_url` instead — drawing invents rather than finds, so pick by whether the thing already exists.",
     "- `send_sticker` sends one from the sticker library below, which is shared by every chat. Reach for it when a sticker answers better than words — a reaction, a joke, agreement — or when someone asks for one. Pick by what it shows, not by its id order. If nothing fits, do not force it; say something instead.",
     "- `check_usage` reports what you have cost so far. Use it when someone asks about tokens, usage or spending, and read the figures back plainly.",
+    "- `react` puts an emoji on a message instead of sending one. Prefer it for pure acknowledgement — agreement, thanks, amusement, \"seen it\" — since it adds nothing to the chat and notifies nobody. Do not both react and send a line saying the same thing.",
     "- `name_sticker` renames one. Use it when someone says what a sticker should be called, so it can be asked for by that name later.",
     "- After a tool has put something in the chat, add at most one short line of text — or none at all. Do not describe what you just sent; everyone can see it.",
     "",
@@ -821,6 +826,43 @@ const toolsFor = (turn: Turn, sent: string[]) => ({
         }),
       }
     : {}),
+
+  react: tool({
+    description:
+      "Put an emoji reaction on a message, the way a person taps and holds one. Use it to acknowledge something without adding a message to the chat — agreement, thanks, amusement, or simply that you have seen it. Much lighter than replying: nobody gets a notification and nothing scrolls.",
+    inputSchema: z.object({
+      emoji: z
+        .string()
+        .max(16)
+        .describe(
+          "A single emoji, e.g. 👍 ❤️ 😂 🎉. Pass an empty string to remove a reaction you left earlier.",
+        ),
+      target: z
+        .enum(["their message", "the one they replied to"])
+        .optional()
+        .describe(
+          "Which message to react to. Defaults to theirs; use the other when they are pointing at something and the reaction belongs on that.",
+        ),
+    }),
+    execute: async ({ emoji, target }) => {
+      const wantsQuoted = target === "the one they replied to";
+      const key = wantsQuoted ? turn.quotedKey : turn.messageKey;
+      if (!key) {
+        return wantsQuoted
+          ? "There is no replied-to message here to react to."
+          : "There is no message to react to.";
+      }
+      try {
+        await wapi.react(key, emoji);
+        sent.push(emoji ? `reaction ${emoji}` : "reaction removed");
+        return emoji ? `Reacted ${emoji}.` : "Reaction removed.";
+      } catch (err) {
+        const why = err instanceof Error ? err.message : String(err);
+        console.error("[react] failed", why);
+        return `Could not react: ${why}`;
+      }
+    },
+  }),
 
   check_usage: tool({
     description:

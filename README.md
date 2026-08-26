@@ -131,6 +131,7 @@ Beyond text, the bot decides for itself when one of these fits — you just ask 
 | *(photo or GIF attached)* "@bot" | turns it into a sticker, animation intact, and keeps it |
 | *(replying to a photo)* "@bot what is this?" | reads the replied-to message, and looks at its picture |
 | *(replying to a photo)* "@bot make this a sticker" | uses the photo from the message you replied to |
+| *(anything)* | reacts 👍 instead of replying, when acknowledgement is all that is wanted |
 | "connect my Notion" | replies with an authorisation link for this chat |
 | "add that to the meeting notes page" | finds the page and appends it |
 | "make a sticker of a sleepy capybara" | draws one, transparent background, and keeps it |
@@ -394,6 +395,20 @@ delete from rate_limits where user_id = '51922471582';
 ```
 
 `BOT_RATE_LIMIT_PER_MINUTE` changes the default for everyone not listed there.
+
+## Reactions
+
+The bot can react to a message with an emoji instead of sending one — the quiet acknowledgement:
+nothing is added to the chat and nobody is notified. It can react to the message that tagged it,
+or to the one that message was replying to.
+
+This needs `POST /api/messages/react`, a wapi extension. It takes the WhatsApp **key**, not a
+`msgId`: you mostly react to messages someone *else* sent, and those have no `msgId` — that
+number is assigned by wapi when it sends something itself. The key for the triggering message
+arrives whole on the webhook; the quoted one is rebuilt from `contextInfo.stanzaId`, with
+`fromMe` decided in the route, since only that layer knows which identities are the bot's.
+
+An empty emoji clears a reaction.
 
 ## The checklist
 

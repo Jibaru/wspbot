@@ -71,6 +71,17 @@ export async function notify(phone: string, text: string) {
 
 Sending to a group is the same call with a group JID (`…@g.us`) as `to`.
 
+**Reacting** is a separate call and a **wapi extension** — WasenderAPI reports reactions over
+webhooks but has no endpoint to send one, so feature-detect if you target both:
+
+```ts
+await wapi.react(data.key, "👍");   // data.key comes straight from the webhook
+await wapi.unreact(data.key);        // empty emoji clears it
+```
+
+It takes the WhatsApp `key`, not a `msgId`, because you mostly react to messages someone *else*
+sent and those have no `msgId`.
+
 Media is sent **by URL** — `imageUrl`, `documentUrl` and friends are fetched server-side at send
 time. If the file is not already hosted, `POST /api/upload` first and use the URL it returns:
 that one is permanent, so it still resolves when the message is sent later.

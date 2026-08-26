@@ -82,6 +82,16 @@ A timeout tells you the request failed, not that the message was not delivered. 
 sends twice. Reconcile with `/info` using the `msgId` you already have, or accept the ambiguity —
 do not paper over it with a retry loop.
 
+## Reactions are a wapi extension
+
+`POST /api/messages/react` takes `{key, emoji}` and is **not** part of the WasenderAPI
+interface — they report reactions over webhooks but offer no way to send one. If you are
+writing for both, feature-detect rather than assume.
+
+Addressed by WhatsApp `key`, not `msgId`, for the same reason as `/messages/read`: you mostly
+react to messages someone *else* sent, and those have no `msgId`. Take the key straight from the
+webhook payload. An empty `emoji` removes an existing reaction.
+
 ## Rate limiting
 
 `X-RateLimit-Limit`, `X-RateLimit-Remaining` and `X-RateLimit-Reset` are on every response. A

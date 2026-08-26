@@ -89,6 +89,17 @@ export type SendMessageInput = { to: string; mentions?: string[] } & (
   | { location: { latitude: number; longitude: number; name?: string; address?: string } }
 );
 
+/**
+ * Identifies one message. `remoteJid` is the chat, so reacting inside a group addresses the
+ * group; `fromMe` and `participant` say whose message it was.
+ */
+export type MessageKey = {
+  id: string;
+  remoteJid: string;
+  fromMe?: boolean;
+  participant?: string;
+};
+
 /** The WhatsApp identity behind the session key. `id` is a JID, `lid` the newer LID form. */
 export type WapiUser = { id: string; name: string | null; lid: string | null };
 
@@ -197,6 +208,25 @@ export const wapi = {
       body: JSON.stringify({ data: { messages: { message } } }),
     });
     return body["publicUrl"] as string;
+  },
+
+  /**
+   * React to a message, or clear the reaction with an empty string.
+   *
+   * Takes the WhatsApp `key`, not a `msgId`: you mostly react to messages someone *else* sent,
+   * and those have no `msgId` — that number is assigned by wapi when *it* sends something. The
+   * key comes straight off the webhook payload.
+   */
+  async react(
+    key: MessageKey,
+    emoji: string,
+  ): Promise<{ id: string | null; emoji: string }> {
+    return unwrap<{ id: string | null; emoji: string }>(
+      await request("/api/messages/react", {
+        method: "POST",
+        body: JSON.stringify({ key, emoji }),
+      }),
+    );
   },
 
   /** Blue ticks. Best-effort — a failure here must never stop a reply. */

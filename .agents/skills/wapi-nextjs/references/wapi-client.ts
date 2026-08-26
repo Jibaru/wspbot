@@ -84,6 +84,19 @@ const unwrap = <T>(body: Envelope): T => (body.data as T) ?? (body as T);
 export type SendResult = { msgId: number; jid: string; status: string };
 
 /**
+ * A WhatsApp message key, as it arrives in a webhook payload under `data.key`.
+ *
+ * `remoteJid` is the chat, so reacting inside a group addresses the group; `fromMe` and
+ * `participant` identify whose message it was.
+ */
+export type MessageKey = {
+  id: string;
+  remoteJid: string;
+  fromMe?: boolean;
+  participant?: string;
+};
+
+/**
  * One endpoint sends every message type; the field you set decides which.
  *
  * Typed as a union rather than an object of optionals so that setting two content fields is a
@@ -165,6 +178,28 @@ export const wapi = {
       messageTimestamp: string;
       status: number;
     }>(body);
+  },
+
+  /**
+   * React to a message, or clear a reaction with an empty string.
+   *
+   * A wapi extension — WasenderAPI reports reactions over webhooks but has no endpoint to send
+   * one, so feature-detect if you also target them.
+   *
+   * Takes the WhatsApp `key`, not a `msgId`: you mostly react to messages someone *else* sent,
+   * and those have no `msgId`. Pass `data.key` straight from the webhook payload.
+   */
+  async react(key: MessageKey, emoji: string): Promise<{ id: string | null; emoji: string }> {
+    const body = await request("/api/messages/react", {
+      method: "POST",
+      body: JSON.stringify({ key, emoji }),
+    });
+    return unwrap<{ id: string | null; emoji: string }>(body);
+  },
+
+  /** Remove a reaction. The empty string is WhatsApp's convention, not a separate endpoint. */
+  async unreact(key: MessageKey): Promise<void> {
+    await this.react(key, "");
   },
 
   async contacts(): Promise<Contact[]> {

@@ -36,6 +36,11 @@ export type Quoted = {
   text: string;
   /** Who wrote the quoted message, when known. */
   sender?: string;
+  /**
+   * The quoted message's own id, from `contextInfo.stanzaId`. Enough, with the chat, to address
+   * that message — which is what reacting to it needs.
+   */
+  id?: string;
   /** Media in the quoted message — an embedded copy, decryptable like any other. */
   media?: Media;
 };
@@ -179,11 +184,13 @@ export const parse = (data: Record<string, unknown>): Inbound | null => {
   const quotedNode = unwrapMessage(asNode(context?.["quotedMessage"]));
   const quotedMedia = mediaOf(quotedNode);
   const quotedText = textOf(quotedNode);
+  const stanzaId = context?.["stanzaId"];
   const quotedContent: Quoted | undefined =
     quotedNode && (quotedText.trim() || quotedMedia)
       ? {
           text: quotedText,
           ...(typeof quoted === "string" ? { sender: quoted } : {}),
+          ...(typeof stanzaId === "string" && stanzaId ? { id: stanzaId } : {}),
           ...(quotedMedia ? { media: quotedMedia } : {}),
         }
       : undefined;

@@ -161,6 +161,29 @@ async function handle({ event, data }: WebhookBody): Promise<void> {
       : {}),
     // What they are replying to, if anything: the thing their words are about.
     ...(message.quoted ? { quoted: message.quoted } : {}),
+    /**
+     * Keys, so the bot can react rather than reply. The triggering message's key arrives whole;
+     * the quoted one is rebuilt from its stanzaId, and `fromMe` is settled here because only
+     * this layer knows which identities are ours.
+     */
+    messageKey: {
+      id: message.messageId,
+      remoteJid: message.chat,
+      fromMe: false,
+      ...(message.isGroup ? { participant: message.sender } : {}),
+    },
+    ...(message.quoted?.id
+      ? {
+          quotedKey: {
+            id: message.quoted.id,
+            remoteJid: message.chat,
+            fromMe: message.quotedSender
+              ? identity.includes(mentions.identityKey(message.quotedSender))
+              : false,
+            ...(message.quoted.sender ? { participant: message.quoted.sender } : {}),
+          },
+        }
+      : {}),
   });
 
   /**

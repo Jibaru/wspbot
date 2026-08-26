@@ -1,11 +1,8 @@
 import "server-only";
-import { execFile } from "node:child_process";
-import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { promisify } from "node:util";
+import { ffmpeg, FfmpegError, inScratch } from "./ffmpeg";
 
-const run = promisify(execFile);
 
 /**
  * Turning what people send into WhatsApp stickers.
@@ -48,29 +45,8 @@ const ANIMATED_LADDER = [
 
 const STATIC_LADDER = [75, 55, 35];
 
-export class StickerError extends Error {}
-
-const ffmpeg = async (args: string[]): Promise<void> => {
-  try {
-    await run("ffmpeg", args, { timeout: 60_000, maxBuffer: 1 << 24 });
-  } catch (err) {
-    const detail =
-      err && typeof err === "object" && "stderr" in err
-        ? String((err as { stderr: unknown }).stderr).split("\n").slice(-4).join(" ")
-        : String(err);
-    throw new StickerError(`ffmpeg failed: ${detail}`);
-  }
-};
-
-/** Each conversion gets its own directory so concurrent turns cannot collide on a filename. */
-const inScratch = async <T>(fn: (dir: string) => Promise<T>): Promise<T> => {
-  const dir = await mkdtemp(join(tmpdir(), "wspbot-sticker-"));
-  try {
-    return await fn(dir);
-  } finally {
-    await rm(dir, { recursive: true, force: true }).catch(() => {});
-  }
-};
+/** Raised when the source cannot become a usable sticker. */
+export class StickerError extends FfmpegError {}
 
 /**
  * Convert to a sticker.

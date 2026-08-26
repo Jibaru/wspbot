@@ -13,6 +13,7 @@ import { query } from "./db";
 import { wapi } from "./wapi";
 import * as memory from "./memory";
 import * as stickers from "./stickers";
+import { toVoiceNote, VOICE_NOTE_MIMETYPE, VOICE_NOTE_FILENAME } from "./audio";
 import type { Media } from "./mentions";
 
 /**
@@ -40,8 +41,11 @@ const HISTORY_TURNS = 20;
 /** OpenAI's current small TTS model; overridable for the same reason as the chat model. */
 const SPEECH_MODEL = "gpt-4o-mini-tts";
 
-/** mp3 over opus: every WhatsApp client plays it, and wapi re-encodes for voice notes anyway. */
-const SPEECH_FORMAT = "mp3";
+/**
+ * Lossless out of the TTS model: it is re-encoded to Opus immediately afterwards, and
+ * mp3-then-Opus would stack two lossy passes for nothing.
+ */
+const SPEECH_FORMAT = "wav";
 
 export type Turn = {
   chat: string;
@@ -227,11 +231,18 @@ const toolsFor = (turn: Turn, sent: string[]) => ({
           ...(instructions ? { instructions } : {}),
         });
 
+        /**
+         * Re-encoded to Ogg/Opus, which is what a WhatsApp voice note actually is. mp3 looks
+         * fine in WhatsApp Web — a browser will decode anything the OS can — while the mobile
+         * app refuses to play it. So this is a correctness step, not an optimisation.
+         */
+        const opus = await toVoiceNote(Buffer.from(speech.audio.uint8Array));
+
         // wapi fetches media by URL at send time, so the bytes need a home first.
         const url = await wapi.upload({
-          base64: speech.audio.base64,
-          mimetype: speech.audio.mediaType,
-          fileName: "voice.mp3",
+          base64: opus.toString("base64"),
+          mimetype: VOICE_NOTE_MIMETYPE,
+          fileName: VOICE_NOTE_FILENAME,
         });
 
         await wapi.send({ to: turn.chat, audioUrl: url });

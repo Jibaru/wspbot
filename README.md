@@ -107,9 +107,11 @@ Notes on each:
 - **Files, images, video, PDFs** go out by URL — the bot sends a link it actually found, and is
   told never to invent one. Documents always carry a filename, because a document without one
   arrives named after its URL.
-- **Voice notes** are generated with OpenAI TTS, uploaded to wapi for a permanent URL, then
-  sent. Six voices are available and the bot can be asked for a delivery style ("warm and
-  unhurried"). mp3 rather than opus, because every WhatsApp client plays it.
+- **Voice notes** are generated with OpenAI TTS, re-encoded to **Ogg/Opus, mono, 48kHz**, then
+  uploaded to wapi for a permanent URL. That encoding is the format, not a preference: mp3 plays
+  in WhatsApp Web — a browser decodes whatever the OS can — and the mobile app refuses it, so
+  the bug is invisible on a laptop. `npm run voice-check` verifies the container and codec with
+  ffprobe. Six voices, and the bot can be asked for a delivery style ("warm and unhurried").
 - **Polls** take 2–12 options and can allow multiple choices. Duplicate options are removed
   first — WhatsApp drops them silently, which would quietly turn a 3-option poll into 2.
 - When a tool has already put something in the chat, the bot sends at most one short line after
@@ -221,6 +223,7 @@ failed. The bot's manners live in the system prompt in `lib/agent.ts`.
 ```bash
 npm run smoke           # signature verification + "is this message for me?" — no keys needed
 npm run sticker-check   # real ffmpeg conversion: 512x512, animated, under size ceilings
+npm run voice-check     # voice notes really are Ogg/Opus mono 48kHz, per ffprobe
 npm run build           # typecheck and production build
 ```
 
@@ -265,6 +268,8 @@ lib/memory.ts                    facts, scoped per chat
 lib/stickers.ts                  the sticker library: decrypt, dedupe, describe, store
 lib/sticker-maker.ts             ffmpeg: anything -> 512x512 WebP, animation preserved
 lib/fetch-media.ts               guarded remote downloads (SSRF, redirects, size cap)
+lib/audio.ts                     TTS output -> Ogg/Opus, the voice-note format
+lib/ffmpeg.ts                    shared ffmpeg runner and scratch directories
 lib/mentions.ts                  parsing WhatsApp message nodes, "is this for me?"
 lib/wapi.ts                      wapi REST client
 lib/signature.ts                 webhook signature verification

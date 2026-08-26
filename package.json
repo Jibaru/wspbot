@@ -9,7 +9,8 @@
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "smoke": "tsx scripts/smoke.ts",
-    "sticker-check": "tsx --conditions=react-server scripts/sticker-check.mts"
+    "sticker-check": "tsx --conditions=react-server scripts/sticker-check.mts",
+    "voice-check": "tsx --conditions=react-server scripts/voice-check.mts"
   },
   "dependencies": {
     "@ai-sdk/openai": "^4.0.46",

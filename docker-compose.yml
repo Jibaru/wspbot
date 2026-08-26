@@ -18,5 +18,11 @@ services:
       WAPI_PAT: ${WAPI_PAT}
       WAPI_SESSION_ID: ${WAPI_SESSION_ID}
       BOT_REPLY_TO_DMS: ${BOT_REPLY_TO_DMS}
+      BOT_IMAGE_MODEL: ${BOT_IMAGE_MODEL}
+      # Notion is optional; unset, its tools are simply not offered.
+      NOTION_CLIENT_ID: ${NOTION_CLIENT_ID}
+      NOTION_CLIENT_SECRET: ${NOTION_CLIENT_SECRET}
+      # Used to build the OAuth redirect, so it has to match the integration's registered URI.
+      APP_URL: ${APP_URL}
     expose:
       - "3000"

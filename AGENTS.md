@@ -128,5 +128,9 @@ vps compose env 2ut0ntUFzz-aGHOyjQb8r --set "$ENVSTR" --json   # env first
 git push                                                       # then code
 ```
 
+**A new environment variable needs adding in two places**: the Dokploy compose env *and* the
+`environment:` block in `docker-compose.yml`. Setting only the first leaves the container never
+seeing it, and the symptom is a feature that behaves exactly as if it were unconfigured.
+
 ffmpeg is installed in the runner stage, and the Dockerfile greps for `libwebp` and `libopus` so a
 base image without them fails the build rather than the feature.

@@ -162,6 +162,22 @@ export const wapi = {
     return body["publicUrl"] as string;
   },
 
+  /**
+   * Turn an inbound encrypted media node into a URL.
+   *
+   * Inbound media is not fetchable as it arrives: the payload carries a CDN link and a
+   * `mediaKey`, and the bytes are useless without decryption. Pass the message node straight
+   * from the webhook. **The returned URL expires after an hour**, so anything worth keeping
+   * must be fetched and re-uploaded rather than stored as-is.
+   */
+  async decryptMedia(message: Record<string, unknown>): Promise<string> {
+    const body = await request("/api/decrypt-media", {
+      method: "POST",
+      body: JSON.stringify({ data: { messages: { message } } }),
+    });
+    return body["publicUrl"] as string;
+  },
+
   /** Blue ticks. Best-effort — a failure here must never stop a reply. */
   async markRead(key: Record<string, unknown>): Promise<void> {
     await request("/api/messages/read", {

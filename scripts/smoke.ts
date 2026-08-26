@@ -118,6 +118,48 @@ check(
   null,
 );
 
+const groupSticker = {
+  key: {
+    remoteJid: "1203630@g.us",
+    participant: "5215512345678@s.whatsapp.net",
+    fromMe: false,
+    id: "MSG_STICKER",
+  },
+  pushName: "Ignacio",
+  message: {
+    stickerMessage: {
+      url: "https://mmg.whatsapp.net/enc",
+      mediaKey: "abc123",
+      mimetype: "image/webp",
+    },
+  },
+};
+
+// Same sticker inside a disappearing-message wrapper — must still be seen.
+const ephemeralSticker = {
+  key: { remoteJid: "1203630@g.us", fromMe: false, id: "MSG_STICKER_EPH" },
+  pushName: "Ignacio",
+  message: { ephemeralMessage: { message: clone(groupSticker.message) } },
+};
+
+console.log("\nstickers:");
+const sticker = mentions.parse(groupSticker as unknown as Record<string, unknown>);
+check("sticker is parsed at all", Boolean(sticker), true);
+check("sticker node captured", Boolean(sticker?.stickerNode), true);
+// Collected, not answered: a bare sticker has nothing to reply to.
+check(
+  "sticker does not trigger a reply",
+  sticker ? mentions.shouldReply(sticker, identity, true) : null,
+  false,
+);
+const eph = mentions.parse(ephemeralSticker as unknown as Record<string, unknown>);
+check("sticker inside ephemeral wrapper found", Boolean(eph?.stickerNode), true);
+check(
+  "plain text carries no sticker node",
+  Boolean(mentions.parse(groupTagged as unknown as Record<string, unknown>)?.stickerNode),
+  false,
+);
+
 const parsed = mentions.parse(
   groupTagged as unknown as Record<string, unknown>,
 )!;

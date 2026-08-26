@@ -12,6 +12,7 @@ import { config } from "./config";
 import { query } from "./db";
 import { wapi } from "./wapi";
 import * as memory from "./memory";
+import * as stickers from "./stickers";
 
 /**
  * The brain: one model turn per tagged message, with web search, memory, and the ability to
@@ -79,7 +80,10 @@ export const clearHistory = (chat: string): Promise<unknown[]> =>
   query("delete from messages where chat = $1", [chat]);
 
 const systemPrompt = async (turn: Turn): Promise<string> => {
-  const memories = memory.render(await memory.list(turn.chat));
+  const [memories, stickerList] = await Promise.all([
+    memory.list(turn.chat).then(memory.render),
+    stickers.list(turn.chat).then(stickers.render),
+  ]);
   return [
     `You are a helpful assistant living inside a WhatsApp ${turn.isGroup ? "group chat" : "chat"}, reached by tagging you.`,
     "",
@@ -98,6 +102,7 @@ const systemPrompt = async (turn: Turn): Promise<string> => {
     "- `send_media` puts an image, video, PDF or other file in the chat from a URL. Use it when someone asks for a file, or when a picture or document answers better than a description. The URL must be one you actually found — never invent one.",
     "- `send_voice_note` speaks a reply aloud. Use it when asked to say, read, or record something, and for anything genuinely easier to hear than to read. Keep it under roughly 90 seconds of speech.",
     "- `create_poll` asks the group to choose. Use it when someone wants a vote, or is deciding between options in a group.",
+    "- `send_sticker` sends one of this chat's saved stickers, listed below. Reach for it when a sticker answers better than words — a reaction, a joke, agreement — or when someone asks for one. Pick by what it shows, not by its id order. If nothing in the list fits, do not force it; say something instead.",
     "- After a tool has put something in the chat, add at most one short line of text — or none at all. Do not describe what you just sent; everyone can see it.",
     "",
     "Remembering:",
@@ -110,6 +115,9 @@ const systemPrompt = async (turn: Turn): Promise<string> => {
     "",
     "Remembered for this chat:",
     memories,
+    "",
+    "Stickers saved in this chat:",
+    stickerList,
   ].join("\n");
 };
 
@@ -257,6 +265,27 @@ const toolsFor = (turn: Turn, sent: string[]) => ({
         const why = err instanceof Error ? err.message : String(err);
         console.error("[create_poll] failed", why);
         return `Could not post the poll: ${why}`;
+      }
+    },
+  }),
+
+  send_sticker: tool({
+    description:
+      "Send one of this chat's saved stickers, by the id shown in the sticker list. Only ids from that list exist — never invent one.",
+    inputSchema: z.object({
+      id: z.string().describe("The sticker id, e.g. s7."),
+    }),
+    execute: async ({ id }) => {
+      const sticker = await stickers.byId(id, turn.chat);
+      if (!sticker) return `No sticker ${id} in this chat. Pick one from the list.`;
+      try {
+        await wapi.send({ to: turn.chat, stickerUrl: sticker.url });
+        sent.push(`sticker (${sticker.label})`);
+        return `Sent the "${sticker.label}" sticker.`;
+      } catch (err) {
+        const why = err instanceof Error ? err.message : String(err);
+        console.error("[send_sticker] failed", why);
+        return `Could not send it: ${why}`;
       }
     },
   }),

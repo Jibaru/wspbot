@@ -68,6 +68,21 @@ const migrate = async (): Promise<void> => {
       id         text primary key,
       created_at timestamptz not null default now()
     );
+
+    create table if not exists stickers (
+      id          serial primary key,
+      chat        text        not null,
+      -- Hash of the actual bytes. The same sticker gets sent over and over, and this is what
+      -- stops it being re-uploaded and re-described every time.
+      sha256      text        not null,
+      url         text        not null,
+      label       text        not null,
+      description text,
+      added_by    text,
+      created_at  timestamptz not null default now(),
+      unique (chat, sha256)
+    );
+    create index if not exists stickers_sha_idx on stickers (sha256);
   `);
 };
 

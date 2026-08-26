@@ -1,5 +1,6 @@
 import { wapi } from "@/lib/wapi";
 import * as memory from "@/lib/memory";
+import { query } from "@/lib/db";
 
 /**
  * A status page, not an admin panel: is the session linked, who am I, what do I remember. It
@@ -13,10 +14,16 @@ const settle = async <T,>(p: Promise<T>): Promise<T | null> =>
   p.catch(() => null);
 
 export default async function Page() {
-  const [status, me, memories] = await Promise.all([
+  const [status, me, memories, stickers] = await Promise.all([
     settle(wapi.status()),
     settle(wapi.me()),
     settle(memory.list()),
+    // Read directly: lib/stickers scopes to one chat, and this page shows every chat's.
+    settle(
+      query<{ id: number; label: string; url: string; chat: string }>(
+        "select id, label, url, chat from stickers order by id desc limit 60",
+      ),
+    ),
   ]);
 
   const connected = status === "connected";
@@ -70,6 +77,28 @@ export default async function Page() {
             : "Link the phone from the wapi dashboard, then reload."}
         </p>
       )}
+
+      <h2>Stickers{stickers?.length ? ` · ${stickers.length}` : ""}</h2>
+      <div className="panel">
+        {stickers === null ? (
+          <p className="empty">Could not read the sticker library.</p>
+        ) : stickers.length === 0 ? (
+          <p className="empty">
+            None yet. Send a sticker in a chat the bot is in and it will keep it.
+          </p>
+        ) : (
+          <ul className="stickers">
+            {stickers.map((s) => (
+              <li key={s.id} title={`s${s.id} · ${s.chat}`}>
+                {/* Plain img: these are wapi-hosted webp, and next/image would only add a proxy. */}
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={s.url} alt={s.label} loading="lazy" />
+                <span>{s.label}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
 
       <h2>Memory{memories?.length ? ` · ${memories.length}` : ""}</h2>
       <div className="panel">

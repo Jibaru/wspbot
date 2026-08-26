@@ -77,6 +77,7 @@ same way. This is the only reason a tunnel ever enters the picture — deployed,
 ## When it replies
 
 - **Groups** — when `@`-tagged, or when someone replies to one of its messages.
+- **Stickers** — collected silently in any group, without a tag. See below.
 - **Direct messages** — ignored. A one-to-one chat has no tagging convention, so answering
   there means answering everything sent to it. Set `BOT_REPLY_TO_DMS=true` if you want that.
 
@@ -97,6 +98,7 @@ Beyond text, the bot decides for itself when one of these fits — you just ask 
 | "read that out" / "send it as audio" | generates speech and sends a voice note |
 | "let's vote on Friday or Saturday" | posts a WhatsApp poll people can tap |
 | "link me the docs" | sends a bare URL, which WhatsApp expands into a preview |
+| "send the laughing cat sticker" | sends one of the stickers the chat has already used |
 
 Notes on each:
 
@@ -113,6 +115,34 @@ Notes on each:
 
 If a send fails, the error goes back to the model rather than being thrown, so it can tell you
 what went wrong or try a different source instead of the turn dying silently.
+
+## Stickers
+
+The bot builds its own sticker library out of what people already send.
+
+**Collecting.** Any sticker sent in a chat the bot is in gets kept — silently, with no reply.
+This is the one thing the bot looks at without being tagged, because a sticker library is only
+useful if it fills itself.
+
+Three things make that less trivial than it sounds:
+
+- **Inbound media is encrypted.** The webhook carries a CDN link and a `mediaKey`, not usable
+  bytes, so each sticker goes through `decrypt-media` first.
+- **The decrypted URL expires after an hour**, so the bytes are fetched and re-uploaded to get a
+  permanent one. Storing the decrypted link would leave a library of dead images by tomorrow.
+- **The bot cannot see its own library at send time**, so each sticker is described once on
+  arrival by a vision call, and chosen later by that description.
+
+**Deduplicated by content hash.** The same sticker gets sent over and over; hashing the bytes
+means it is uploaded and described exactly once. A sticker already seen in another chat reuses
+that work and only adds a row.
+
+**Sending.** The chat's stickers are listed in the system prompt with their descriptions, so the
+bot picks one the same way it recalls a fact — no lookup step. Ask for one, or let it reach for
+one when a sticker answers better than words.
+
+Scoped per chat, like memories: an in-joke sticker from one group has no business appearing in
+another. Everything collected is shown on `/`.
 
 ## Memory
 
@@ -181,6 +211,7 @@ app/page.tsx                     status page
 app/api/wapi/webhook/route.ts    inbound: verify, ack, then reply
 lib/agent.ts                     the model turn: prompt, web search, memory tools
 lib/memory.ts                    facts, scoped per chat
+lib/stickers.ts                  the sticker library: decrypt, dedupe, describe, store
 lib/mentions.ts                  parsing WhatsApp message nodes, "is this for me?"
 lib/wapi.ts                      wapi REST client
 lib/signature.ts                 webhook signature verification

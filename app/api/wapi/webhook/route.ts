@@ -5,6 +5,7 @@ import { query } from "@/lib/db";
 import { wapi } from "@/lib/wapi";
 import { reply, clearHistory } from "@/lib/agent";
 import * as mentions from "@/lib/mentions";
+import * as stickers from "@/lib/stickers";
 
 /**
  * wapi webhook receiver — the only way inbound WhatsApp messages reach this app. wapi has no
@@ -90,8 +91,22 @@ async function handle({ event, data }: WebhookBody): Promise<void> {
   const me = await wapi.meCached();
   const identity = mentions.identityOf(me);
 
-  if (!mentions.shouldReply(message, identity, config.replyToDms())) return;
+  const willReply = mentions.shouldReply(message, identity, config.replyToDms());
+  /**
+   * Stickers are collected without being answered — that is the point, the bot builds a library
+   * from what people already send. So the "is this for me?" gate cannot decide whether to look
+   * at a message, only whether to reply to one.
+   */
+  const willCapture = Boolean(message.stickerNode);
+
+  // Claimed only when there is work to do, so ignored chatter does not fill the table.
+  if (!willReply && !willCapture) return;
   if (!(await claim(message.messageId))) return;
+
+  if (willCapture) {
+    await stickers.capture(message.chat, message.senderName, message.stickerNode!);
+  }
+  if (!willReply) return;
 
   // Best effort — blue ticks are not worth failing a reply over.
   await wapi.markRead(message.key).catch(() => {});

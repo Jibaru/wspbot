@@ -135,3 +135,37 @@ code {
 .empty {
   color: var(--muted);
 }
+
+ul.stickers {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
+  gap: 0.9rem;
+}
+
+ul.stickers li {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  text-align: center;
+}
+
+ul.stickers img {
+  width: 72px;
+  height: 72px;
+  object-fit: contain;
+  /* Stickers are transparent webp and vanish against a dark panel without a plate. */
+  background: color-mix(in srgb, var(--line) 40%, transparent);
+  border-radius: 8px;
+  padding: 4px;
+}
+
+ul.stickers span {
+  font-size: 0.75rem;
+  color: var(--muted);
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}

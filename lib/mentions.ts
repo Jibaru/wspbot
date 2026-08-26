@@ -20,6 +20,11 @@ export type Inbound = {
   messageId: string;
   mentionedJids: string[];
   quotedSender?: string;
+  /**
+   * The unwrapped message node, present only when this message is a sticker. Handed to
+   * `decrypt-media` as-is — inbound media is encrypted, and the node carries the key.
+   */
+  stickerNode?: Record<string, unknown>;
 };
 
 type Node = Record<string, unknown> | undefined;
@@ -86,7 +91,11 @@ export const parse = (data: Record<string, unknown>): Inbound | null => {
 
   const node = unwrapMessage(asNode(data["message"]));
   const text = textOf(node);
-  if (!text.trim()) return null;
+  const isSticker = Boolean(node && asNode(node["stickerMessage"]));
+
+  // A sticker carries no text, so text alone can no longer decide whether there is anything
+  // here worth looking at.
+  if (!text.trim() && !isSticker) return null;
 
   const context = contextOf(node);
   const mentioned = context?.["mentionedJid"];
@@ -110,6 +119,7 @@ export const parse = (data: Record<string, unknown>): Inbound | null => {
       ? mentioned.filter((m): m is string => typeof m === "string")
       : [],
     ...(typeof quoted === "string" ? { quotedSender: quoted } : {}),
+    ...(isSticker && node ? { stickerNode: node } : {}),
   };
 };
 
@@ -135,8 +145,11 @@ export const shouldReply = (
   message: Inbound,
   identity: string[],
   replyToDms: boolean,
-): boolean =>
-  message.isGroup ? isTagged(message, identity) : replyToDms;
+): boolean => {
+  // Nothing to answer. A bare sticker is collected, not replied to.
+  if (!message.text.trim()) return false;
+  return message.isGroup ? isTagged(message, identity) : replyToDms;
+};
 
 /** `@14155550100 what's up` reads better to the model as `what's up`. */
 export const stripMentions = (text: string, identity: string[]): string => {

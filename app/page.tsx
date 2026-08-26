@@ -1,6 +1,7 @@
 import { wapi } from "@/lib/wapi";
 import * as memory from "@/lib/memory";
 import { query } from "@/lib/db";
+import * as usage from "@/lib/usage";
 
 /**
  * A status page, not an admin panel: is the session linked, who am I, what do I remember. It
@@ -14,7 +15,7 @@ const settle = async <T,>(p: Promise<T>): Promise<T | null> =>
   p.catch(() => null);
 
 export default async function Page() {
-  const [status, me, memories, stickers] = await Promise.all([
+  const [status, me, memories, stickers, spend] = await Promise.all([
     settle(wapi.status()),
     settle(wapi.me()),
     settle(memory.list()),
@@ -24,9 +25,13 @@ export default async function Page() {
         "select id, label, url, chat, (bytes is not null) as portable from stickers order by id desc limit 60",
       ),
     ),
+    settle(usage.summary()),
   ]);
 
   const connected = status === "connected";
+  const tokens = (n: number) => n.toLocaleString("en-US");
+  const money = (usd: number | null) =>
+    usd === null ? "—" : usd < 0.01 ? "<$0.01" : `$${usd.toFixed(2)}`;
 
   return (
     <main>
@@ -77,6 +82,39 @@ export default async function Page() {
             : "Link the phone from the wapi dashboard, then reload."}
         </p>
       )}
+
+      <h2>Usage</h2>
+      <div className="panel">
+        {spend === null ? (
+          <p className="empty">Could not read usage.</p>
+        ) : spend.allTime.calls === 0 ? (
+          <p className="empty">Nothing recorded yet.</p>
+        ) : (
+          <dl>
+            {(
+              [
+                ["Today", spend.today],
+                ["Last 7 days", spend.week],
+                ["All time", spend.allTime],
+              ] as const
+            ).map(([label, t]) => (
+              <div className="row" key={label}>
+                <dt>{label}</dt>
+                <dd>
+                  {tokens(t.inputTokens + t.outputTokens)} tokens · {t.calls} calls ·{" "}
+                  {money(t.estimatedUsd)}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        )}
+        {spend?.allTime.estimatedUsd === null && spend.allTime.calls > 0 && (
+          <p className="meta" style={{ marginTop: "0.6rem" }}>
+            No published rate for this model — set <code>OPENAI_PRICE_INPUT</code> and{" "}
+            <code>OPENAI_PRICE_OUTPUT</code> (USD per million tokens) to show cost.
+          </p>
+        )}
+      </div>
 
       <h2>Stickers{stickers?.length ? ` · ${stickers.length}` : ""}</h2>
       <div className="panel">

@@ -104,6 +104,26 @@ const migrate = async (): Promise<void> => {
     end $$;
 
     create unique index if not exists stickers_sha256_key on stickers (sha256);
+
+    /*
+     * What the bot has spent. Written after every model call — OpenAI's own usage and cost
+     * endpoints need an Admin key, which this app does not have and should not need.
+     * Named model_usage because "usage" is a keyword in enough contexts to be a nuisance.
+     */
+    create table if not exists model_usage (
+      id             bigserial primary key,
+      at             timestamptz not null default now(),
+      -- reply | vision | speech
+      kind           text        not null,
+      model          text        not null,
+      input_tokens   integer     not null default 0,
+      output_tokens  integer     not null default 0,
+      cached_tokens  integer     not null default 0,
+      -- Speech is billed on text, not tokens, and the SDK reports no usage for it.
+      characters     integer     not null default 0,
+      chat           text
+    );
+    create index if not exists model_usage_at_idx on model_usage (at desc);
   `);
 };
 

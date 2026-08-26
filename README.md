@@ -240,6 +240,28 @@ should change in the same commit the deployment does. A fact about the architect
 table goes stale silently. It is also read out to whoever asks, so nothing secret goes in it, and
 the bot is told never to reveal keys, environment values or another chat's contents.
 
+## Usage and cost
+
+Ask it — *"how many tokens have you used?"*, *"how much have you cost?"* — and it reports tokens
+for today, the last week and all time, with an estimated spend. The same figures are on `/`.
+
+**Why it counts them itself.** OpenAI does expose this, at
+`/v1/organization/usage/completions` and `/v1/organization/costs`, but both need the
+`api.usage.read` scope — an **Admin** key. This app holds a project key, and giving a WhatsApp
+bot an org-wide admin credential just to count its own tokens is a bad trade. Counting locally
+is also the more useful number: what *this bot* cost, not what the whole organisation did.
+
+**Tokens are exact**, taken from the API response — input, output, and cached input, recorded
+after every reply and every sticker description. Voice notes are billed on text rather than
+tokens and the SDK reports no usage for them, so they are counted in characters and reported
+separately.
+
+**Money is an estimate**, and only shown for models whose published rates are known
+(`gpt-5.6-sol`, `-terra`, `-luna`). A model without one — a bare alias, or after a price change
+— reports tokens and says the cost is unknown rather than inventing a figure people would
+budget against. Set `OPENAI_PRICE_INPUT` and `OPENAI_PRICE_OUTPUT` (USD per million tokens) to
+price it.
+
 ## Memory
 
 Facts are scoped to the chat they were told in — the bot sits in shared rooms, and something
@@ -326,6 +348,7 @@ lib/stickers.ts                  the sticker library: decrypt, dedupe, describe,
 lib/sticker-maker.ts             ffmpeg: anything -> 512x512 WebP, animation preserved
 lib/fetch-media.ts               guarded remote downloads (SSRF, redirects, size cap)
 lib/about.ts                     what the bot knows about itself
+lib/usage.ts                     token accounting and the cost estimate
 lib/audio.ts                     TTS output -> Ogg/Opus, the voice-note format
 lib/ffmpeg.ts                    shared ffmpeg runner and scratch directories
 lib/mentions.ts                  parsing WhatsApp message nodes, "is this for me?"

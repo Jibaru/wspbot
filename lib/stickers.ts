@@ -10,6 +10,7 @@ import { wapi } from "./wapi";
 import { toSticker as encodeSticker, firstFrame, StickerError } from "./sticker-maker";
 import type { Media } from "./mentions";
 import { fetchMedia, looksAnimated } from "./fetch-media";
+import * as usage from "./usage";
 
 /**
  * The sticker library — one shared collection, used by every chat.
@@ -194,7 +195,7 @@ const describe = async (
   bytes: Buffer,
 ): Promise<{ label: string; description: string | null }> => {
   try {
-    const { object } = await generateObject({
+    const result = await generateObject({
       model: openai(config.model()),
       schema: z.object({
         label: z
@@ -219,6 +220,8 @@ const describe = async (
         },
       ],
     });
+    const object = result.object;
+    await usage.record({ kind: "vision", model: config.model(), usage: result.usage });
     return { label: object.label.trim(), description: object.description.trim() };
   } catch (err) {
     console.warn("[stickers] could not describe:", err instanceof Error ? err.message : err);

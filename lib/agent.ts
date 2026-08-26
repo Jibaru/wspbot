@@ -13,6 +13,7 @@ import { query } from "./db";
 import { wapi } from "./wapi";
 import * as memory from "./memory";
 import { about } from "./about";
+import * as usage from "./usage";
 import * as stickers from "./stickers";
 import { toVoiceNote, VOICE_NOTE_MIMETYPE, VOICE_NOTE_FILENAME } from "./audio";
 import type { Media } from "./mentions";
@@ -112,6 +113,7 @@ const systemPrompt = async (turn: Turn): Promise<string> => {
     "- `create_poll` asks the group to choose. Use it when someone wants a vote, or is deciding between options in a group.",
     "- `sticker_from_url` downloads a GIF or image from a link and turns it into a sticker, keeping animation. Use it when someone links a GIF, or asks for a sticker of something you can find — search for a GIF first, then pass the direct media URL, not a Tenor or Giphy page link.",
     "- `send_sticker` sends one from the sticker library below, which is shared by every chat. Reach for it when a sticker answers better than words — a reaction, a joke, agreement — or when someone asks for one. Pick by what it shows, not by its id order. If nothing fits, do not force it; say something instead.",
+    "- `check_usage` reports what you have cost so far. Use it when someone asks about tokens, usage or spending, and read the figures back plainly.",
     "- `name_sticker` renames one. Use it when someone says what a sticker should be called, so it can be asked for by that name later.",
     "- After a tool has put something in the chat, add at most one short line of text — or none at all. Do not describe what you just sent; everyone can see it.",
     "",
@@ -241,6 +243,13 @@ const toolsFor = (turn: Turn, sent: string[]) => ({
          * fine in WhatsApp Web — a browser will decode anything the OS can — while the mobile
          * app refuses to play it. So this is a correctness step, not an optimisation.
          */
+        await usage.record({
+          kind: "speech",
+          model: SPEECH_MODEL,
+          chat: turn.chat,
+          characters: text.length,
+        });
+
         const opus = await toVoiceNote(Buffer.from(speech.audio.uint8Array));
 
         // wapi fetches media by URL at send time, so the bytes need a home first.
@@ -317,6 +326,13 @@ const toolsFor = (turn: Turn, sent: string[]) => ({
         return `Could not send it: ${why}`;
       }
     },
+  }),
+
+  check_usage: tool({
+    description:
+      "Report how much you have cost: tokens used today, over the last week, and in total, with an estimated spend. Use it when someone asks about usage, tokens, cost or spending.",
+    inputSchema: z.object({}),
+    execute: async () => usage.report(),
   }),
 
   name_sticker: tool({
@@ -458,6 +474,13 @@ export const reply = async (turn: Turn): Promise<Reply> => {
         textVerbosity: "low",
       },
     },
+  });
+
+  await usage.record({
+    kind: "reply",
+    model: config.model(),
+    chat: turn.chat,
+    usage: result.usage,
   });
 
   const text = result.text.trim();

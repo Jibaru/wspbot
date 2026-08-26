@@ -100,6 +100,7 @@ Beyond text, the bot decides for itself when one of these fits — you just ask 
 | "link me the docs" | sends a bare URL, which WhatsApp expands into a preview |
 | "send the laughing cat sticker" | sends one of the stickers the chat has already used |
 | *(photo or GIF attached)* "@bot" | turns it into a sticker, animation intact, and keeps it |
+| "make a sticker from <gif link>" | downloads it and converts it, animation intact |
 
 Notes on each:
 
@@ -159,6 +160,26 @@ rather than a sticker. Animations are capped at 6 seconds and re-encoded down a 
 until they fit WhatsApp's ceilings — 100KB static, 500KB animated — since an oversized sticker
 is rejected.
 
+**From a link.** Paste a GIF link, or just ask for a sticker of something — the bot can search,
+find a GIF and turn that into one. Whether it animates is decided from the file's magic bytes,
+not the URL: plenty of CDNs serve a GIF as `application/octet-stream`, and a `.gif` in a path
+proves nothing.
+
+Downloading a URL the model chose is the one genuinely dangerous thing here. Anyone in a group
+can say "make a sticker from http://..." and this app runs on a server that can reach the
+container network and the cloud metadata endpoint. `lib/fetch-media.ts` is what stands in the
+way:
+
+- http/https only, so `file:` and friends are unreachable
+- every hostname resolved and checked against loopback, private, link-local, CGNAT and reserved
+  ranges **before** connecting — and every address it resolves to, not just the first
+- redirects followed by hand, re-validating each hop, because a public URL can redirect to
+  `169.254.169.254` and a normal `fetch` would follow it without a word
+- a byte cap enforced while streaming, not from `content-length`, which a server can lie about
+
+A page URL (`tenor.com/view/...`) is rejected with an explanation rather than a confusing
+failure — the bot needs the media link itself.
+
 **Sending.** The chat's stickers are listed in the system prompt with their descriptions, so the
 bot picks one the same way it recalls a fact — no lookup step. Ask for one, or let it reach for
 one when a sticker answers better than words.
@@ -203,7 +224,9 @@ npm run sticker-check   # real ffmpeg conversion: 512x512, animated, under size 
 npm run build           # typecheck and production build
 ```
 
-`npm run sticker-check` needs ffmpeg on PATH. It builds a non-square video and image, runs them
+`npm run sticker-check` also drives the SSRF guard — every private range, IPv4-mapped IPv6, and
+URLs like `http://169.254.169.254/` and `file:///etc/passwd` must be refused before a connection
+is made — and downloads a real remote GIF end to end. It needs ffmpeg on PATH. It builds a non-square video and image, runs them
 through `lib/sticker-maker`, and reads the WebP container back to confirm the canvas is 512x512,
 that animated input really produced ANIM/ANMF frames, and that the padding kept an alpha
 channel. `ffprobe` cannot parse animated WebP, which is why it inspects the chunks directly.
@@ -241,6 +264,7 @@ lib/agent.ts                     the model turn: prompt, web search, memory tool
 lib/memory.ts                    facts, scoped per chat
 lib/stickers.ts                  the sticker library: decrypt, dedupe, describe, store
 lib/sticker-maker.ts             ffmpeg: anything -> 512x512 WebP, animation preserved
+lib/fetch-media.ts               guarded remote downloads (SSRF, redirects, size cap)
 lib/mentions.ts                  parsing WhatsApp message nodes, "is this for me?"
 lib/wapi.ts                      wapi REST client
 lib/signature.ts                 webhook signature verification

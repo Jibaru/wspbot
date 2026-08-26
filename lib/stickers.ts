@@ -9,6 +9,7 @@ import { wapi } from "./wapi";
 // Aliased: `toSticker` here already means "database row -> Sticker".
 import { toSticker as encodeSticker, firstFrame, StickerError } from "./sticker-maker";
 import type { Media } from "./mentions";
+import { fetchMedia, looksAnimated } from "./fetch-media";
 
 /**
  * The sticker library.
@@ -235,6 +236,29 @@ export const createFrom = async (
  * Store a sticker that just arrived. Silent: never replies, and never throws into the webhook —
  * failing to keep a sticker must not cost the message it came with.
  */
+/**
+ * Build a sticker from a URL — a GIF someone linked, or one the model found by searching.
+ *
+ * Whether it animates is decided from the bytes rather than the URL: plenty of CDNs serve a GIF
+ * as `application/octet-stream`, and a `.gif` in a path proves nothing.
+ */
+export const createFromUrl = async (
+  chat: string,
+  senderName: string,
+  url: string,
+  label?: string,
+): Promise<Sticker> => {
+  const { bytes, contentType } = await fetchMedia(url);
+  const animated = looksAnimated(bytes, contentType);
+
+  const webp = await encodeSticker(bytes, animated);
+  const forDescription = animated ? await firstFrame(bytes) : webp;
+
+  const result = await store(chat, senderName, webp, forDescription, label);
+  if (!result) throw new StickerError("could not save the sticker");
+  return result.sticker;
+};
+
 export const capture = async (
   chat: string,
   senderName: string,

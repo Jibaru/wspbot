@@ -105,6 +105,7 @@ const systemPrompt = async (turn: Turn): Promise<string> => {
     "- `send_media` puts an image, video, PDF or other file in the chat from a URL. Use it when someone asks for a file, or when a picture or document answers better than a description. The URL must be one you actually found — never invent one.",
     "- `send_voice_note` speaks a reply aloud. Use it when asked to say, read, or record something, and for anything genuinely easier to hear than to read. Keep it under roughly 90 seconds of speech.",
     "- `create_poll` asks the group to choose. Use it when someone wants a vote, or is deciding between options in a group.",
+    "- `sticker_from_url` downloads a GIF or image from a link and turns it into a sticker, keeping animation. Use it when someone links a GIF, or asks for a sticker of something you can find — search for a GIF first, then pass the direct media URL, not a Tenor or Giphy page link.",
     "- `send_sticker` sends one of this chat's saved stickers, listed below. Reach for it when a sticker answers better than words — a reaction, a joke, agreement — or when someone asks for one. Pick by what it shows, not by its id order. If nothing in the list fits, do not force it; say something instead.",
     "- After a tool has put something in the chat, add at most one short line of text — or none at all. Do not describe what you just sent; everyone can see it.",
     "",
@@ -332,6 +333,33 @@ const toolsFor = (turn: Turn, sent: string[]) => ({
         }),
       }
     : {}),
+
+  sticker_from_url: tool({
+    description:
+      "Download an image or GIF from a URL and turn it into a sticker for this chat, then send it. Animated GIFs stay animated. Use it when someone links a GIF, or when they ask for a sticker of something and you found a suitable GIF or image by searching. The URL must point at the file itself, not at a page showing it.",
+    inputSchema: z.object({
+      url: httpUrl.describe(
+        "Direct link to the .gif, .webp, .png, .jpg or .mp4 file. A tenor.com/view/... or giphy.com/gifs/... page URL will not work — use the media link.",
+      ),
+      label: z
+        .string()
+        .optional()
+        .describe("A two-to-four word name, only if the person asked for a specific one."),
+    }),
+    execute: async ({ url, label }) => {
+      try {
+        const made = await stickers.createFromUrl(turn.chat, turn.senderName, url, label);
+        await wapi.send({ to: turn.chat, stickerUrl: made.url });
+        sent.push(`sticker (${made.label})`);
+        return `Made and sent "${made.label}", saved as ${made.id}.`;
+      } catch (err) {
+        const why = err instanceof Error ? err.message : String(err);
+        console.error("[sticker_from_url] failed", why);
+        // Returned, not thrown: the model can explain, or try a different link.
+        return `Could not make a sticker from that link: ${why}`;
+      }
+    },
+  }),
 
   remember: tool({
     description:

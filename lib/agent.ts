@@ -148,6 +148,7 @@ const systemPrompt = async (turn: Turn): Promise<string> => {
       : []),
     "Google Sheets:",
     "- When someone shares a spreadsheet link and asks about it, read it with `sheet_read` and answer from what is actually there. Do not guess at contents you have not read.",
+    "- A file often has several tabs. Reading one names the others, so if the answer is not in the tab you read, read the tab that sounds right rather than concluding the data is absent. `sheet_info` lists them all.",
     `- ${config.googleServiceAccount() ? "You can write as well: `sheet_update` changes a specific range, `sheet_append` adds rows at the end. Read before writing so you target the right row, name what you are about to change, and prefer appending over overwriting when either would do." : "You can only read. If someone wants a change made, say that writing is not set up on this deployment rather than pretending to have done it."}`,
     "- Answer questions like \"what is missing?\" by looking at the rows yourself and naming them, rather than describing the sheet in general terms.",
     "",
@@ -703,14 +704,14 @@ const toolsFor = (turn: Turn, sent: string[]) => ({
 
   sheet_read: tool({
     description:
-      "Read a Google Sheet from its link. Use it whenever someone shares a spreadsheet URL and asks about its contents — what is missing, who has not replied, what the totals are. A publicly viewable sheet needs no setup.",
+      "Read a Google Sheet from its link. Use it whenever someone shares a spreadsheet URL and asks about its contents — what is missing, who has not replied, what the totals are. Reads the tab the link points at and tells you what other tabs exist; pass a tab name as the range to read one of those.",
     inputSchema: z.object({
       url: z.string().describe("The Google Sheets link, pasted as given."),
       range: z
         .string()
         .optional()
         .describe(
-          "An A1 range like 'Sheet1!A1:D50', only if they asked for part of it. Omit for the whole tab.",
+          "A tab name to read a different sheet in the same file, or an A1 range like 'Sheet1!A1:D50' for part of one. Omit to read the tab the link points at — the reply then names the other tabs.",
         ),
     }),
     execute: async ({ url, range }) => {

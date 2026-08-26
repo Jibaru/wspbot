@@ -214,21 +214,40 @@ const readPublicCsv = async (ref: SheetRef): Promise<string[][]> => {
   return parseCsv(text);
 };
 
+/**
+ * Read a tab.
+ *
+ * Goes through the service account whenever one is configured: the CSV export flattens a whole
+ * spreadsheet to a single tab, which quietly hides the rest of a multi-tab file. The public path
+ * is a fallback for when there are no credentials at all, and says so.
+ */
 export const read = async (
   input: string,
   range?: string,
 ): Promise<{ text: string; viaServiceAccount: boolean }> => {
   const ref = parseRef(input);
 
-  if (config.googleServiceAccount()) {
-    const target = range?.trim() || (await firstSheetName(ref));
-    const body = await api<{ values?: string[][] }>(
-      `/${ref.id}/values/${encodeURIComponent(target)}`,
-    );
-    return { text: renderGrid(body.values ?? []), viaServiceAccount: true };
+  if (!config.googleServiceAccount()) {
+    return { text: renderGrid(await readPublicCsv(ref)), viaServiceAccount: false };
   }
 
-  return { text: renderGrid(await readPublicCsv(ref)), viaServiceAccount: false };
+  // An explicit range is taken at its word; otherwise the linked tab, with the rest named.
+  const explicit = range?.trim();
+  const resolved = explicit ? null : await resolveTab(ref);
+  const target = explicit ?? resolved!.title;
+
+  const body = await api<{ values?: string[][] }>(
+    `/${ref.id}/values/${encodeURIComponent(target)}`,
+  );
+
+  const grid = renderGrid(body.values ?? []);
+  const header = explicit ? `${target}:` : `Tab "${target}":`;
+  const footer =
+    resolved && resolved.others.length > 0
+      ? `\n\nOther tabs in this file: ${resolved.others.join(", ")}. Read one by passing its name as the range.`
+      : "";
+
+  return { text: `${header}\n${grid}${footer}`, viaServiceAccount: true };
 };
 
 type SheetProperties = { properties?: { title?: string; sheetId?: number } };
@@ -238,28 +257,43 @@ const spreadsheet = (id: string) =>
     `/${id}?fields=properties.title,sheets.properties.title,sheets.properties.sheetId`,
   );
 
-/** The tab someone was looking at when they copied the link, or the first one. */
-const firstSheetName = async (ref: SheetRef): Promise<string> => {
+/**
+ * Which tab to read, and what else is in the file.
+ *
+ * The `gid` in a pasted link identifies the tab the person was looking at, which is almost
+ * always the one they mean — but a spreadsheet with several tabs must not be reported as though
+ * that one were the whole thing, so the others are named alongside.
+ */
+const resolveTab = async (
+  ref: SheetRef,
+): Promise<{ title: string; others: string[] }> => {
   const info = await spreadsheet(ref.id);
-  const tabs = info.sheets ?? [];
-  const match = ref.gid
-    ? tabs.find((s) => String(s.properties?.sheetId) === ref.gid)
-    : undefined;
-  return match?.properties?.title ?? tabs[0]?.properties?.title ?? "Sheet1";
+  const tabs = (info.sheets ?? [])
+    .map((s) => ({ title: s.properties?.title ?? "", gid: String(s.properties?.sheetId ?? "") }))
+    .filter((t) => t.title);
+
+  const chosen =
+    (ref.gid ? tabs.find((t) => t.gid === ref.gid) : undefined) ?? tabs[0];
+  const title = chosen?.title ?? "Sheet1";
+  return { title, others: tabs.map((t) => t.title).filter((t) => t !== title) };
 };
 
 export const describe = async (input: string): Promise<string> => {
   const ref = parseRef(input);
   if (!config.googleServiceAccount()) {
     const rows = await readPublicCsv(ref);
-    return `Read publicly, one tab only. ${rows.length} rows.\n\n${renderGrid(rows, 10)}`;
+    return `Read publicly, which only reaches one tab. ${rows.length} rows.\n\n${renderGrid(rows, 10)}`;
   }
+
   const info = await spreadsheet(ref.id);
-  const tabs = (info.sheets ?? [])
-    .map((s) => s.properties?.title)
-    .filter(Boolean)
-    .join(", ");
-  return `"${info.properties?.title ?? "Untitled"}" — tabs: ${tabs || "(none)"}`;
+  const tabs = (info.sheets ?? []).map((s) => s.properties?.title).filter(Boolean);
+  const { title: linked } = await resolveTab(ref);
+
+  return [
+    `"${info.properties?.title ?? "Untitled"}" has ${tabs.length} tab${tabs.length === 1 ? "" : "s"}:`,
+    // Marking the linked one saves a guess about which the person means.
+    ...tabs.map((t) => `- ${t}${t === linked ? "  (the one the link points at)" : ""}`),
+  ].join("\n");
 };
 
 // ── writing ──────────────────────────────────────────────────────────────
@@ -289,7 +323,7 @@ export const append = async (
   range?: string,
 ): Promise<string> => {
   const ref = parseRef(input);
-  const target = range?.trim() || (await firstSheetName(ref));
+  const target = range?.trim() || (await resolveTab(ref)).title;
   const body = await api<{ updates?: { updatedRange?: string; updatedRows?: number } }>(
     `/${ref.id}/values/${encodeURIComponent(target)}:append?valueInputOption=${VALUE_INPUT}&insertDataOption=INSERT_ROWS`,
     { method: "POST", body: JSON.stringify({ values }) },

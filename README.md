@@ -326,6 +326,31 @@ sunset that repository. The direct API costs one file and no infrastructure.
 Pinned to Notion API version `2026-03-11`. Versions are dated and response shapes change between
 them, so the header is explicit rather than left to a default.
 
+## The checklist
+
+Each chat has a list of pending items. Say it however you say it — *checklist*, *task list*,
+*to-do*, *lista de tareas*, *pendientes* — and the bot works out which one you mean.
+
+```
+you  → @bot add buy milk and call the landlord to the list
+bot  → Added [t1] buy milk, [t2] call the landlord.
+you  → @bot what's pending?
+bot  → t1 buy milk · t2 call the landlord
+you  → @bot mark the milk one done
+bot  → Done: buy milk.
+```
+
+**The list is in the system prompt**, the same trick memories use, so "what's left?" is answered
+from what the model already has rather than costing a tool call. Open items carry their ids, and
+the last five completed ones come along so "did we do the invoices?" is answerable too.
+
+**Nobody says an id.** People say *"mark the milk one done"*, so the model matches the words to
+an item and uses the id itself; if two items could match, it asks which. Ids exist for when it
+matters, not as the interface.
+
+Per chat, like memories — a group's pending list belongs to that group. Completing is separate
+from removing: ticking something off keeps it, deleting means it should never have been there.
+
 ## Memory
 
 Facts are scoped to the chat they were told in — the bot sits in shared rooms, and something

@@ -130,6 +130,23 @@ const migrate = async (): Promise<void> => {
      * acts on behalf of a conversation: whoever connects it is choosing, at Notion's own consent
      * screen, exactly which pages that room may reach.
      */
+    /*
+     * The chat's checklist. Per chat, like memories: a group's pending list belongs to that
+     * group, and one shared list across rooms would be nonsense.
+     */
+    create table if not exists tasks (
+      id         serial primary key,
+      chat       text        not null,
+      text       text        not null,
+      done       boolean     not null default false,
+      added_by   text,
+      done_by    text,
+      created_at timestamptz not null default now(),
+      done_at    timestamptz
+    );
+    -- Open tasks of one chat, in order: the query the prompt makes on every single turn.
+    create index if not exists tasks_chat_idx on tasks (chat, done, id);
+
     create table if not exists notion_connections (
       chat           text primary key,
       access_token   text        not null,

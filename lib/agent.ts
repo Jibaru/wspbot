@@ -19,6 +19,7 @@ import { about } from "./about";
 import * as usage from "./usage";
 import * as stickers from "./stickers";
 import * as notion from "./notion";
+import * as tasks from "./tasks";
 import { toVoiceNote, VOICE_NOTE_MIMETYPE, VOICE_NOTE_FILENAME } from "./audio";
 import { fetchDecrypted } from "./inbound-media";
 import type { Media, Quoted } from "./mentions";
@@ -100,10 +101,12 @@ export const clearHistory = (chat: string): Promise<unknown[]> =>
   query("delete from messages where chat = $1", [chat]);
 
 const systemPrompt = async (turn: Turn): Promise<string> => {
-  const [memories, stickerList, notionConnection] = await Promise.all([
+  const [memories, stickerList, notionConnection, openTasks, doneTasks] = await Promise.all([
     memory.list(turn.chat).then(memory.render),
     stickers.list().then(stickers.render),
     config.notion() ? notion.connectionFor(turn.chat) : Promise.resolve(null),
+    tasks.open(turn.chat),
+    tasks.recentlyDone(turn.chat),
   ]);
   return [
     `You are a helpful assistant living inside a WhatsApp ${turn.isGroup ? "group chat" : "chat"}, reached by tagging you.`,
@@ -142,6 +145,12 @@ const systemPrompt = async (turn: Turn): Promise<string> => {
           "",
         ]
       : []),
+    "The checklist:",
+    "- This chat has a list of pending items, shown below. It is the same thing whether someone calls it a checklist, a task list, a to-do, *lista de tareas* or *pendientes*.",
+    "- `add_tasks` puts things on it, `complete_tasks` ticks them off (or puts one back with undo), `remove_tasks` deletes something that should never have been there.",
+    "- People describe items rather than naming ids — \"mark the milk one done\" — so match their words to an item yourself and use its id. If two items could match, ask which.",
+    "- The list is in front of you. Read it out when asked; do not call a tool just to look.",
+    "",
     "Remembering:",
     "- When someone asks you to record, remember or note something, call `remember` and confirm in one short line.",
     "- Also remember durable facts about this chat that were clearly meant to stick (decisions, deadlines, preferences). Do not remember passing chatter.",
@@ -164,6 +173,9 @@ const systemPrompt = async (turn: Turn): Promise<string> => {
     about(),
     "",
     `Today is ${new Date().toISOString().slice(0, 10)}.`,
+    "",
+    "Checklist for this chat:",
+    tasks.render(openTasks, doneTasks),
     "",
     "Remembered:",
     memories,
@@ -625,6 +637,63 @@ const toolsFor = (turn: Turn, sent: string[]) => ({
         }),
       }
     : {}),
+
+  add_tasks: tool({
+    description:
+      "Add one or more items to this chat's checklist. Use it whenever someone wants something written down as pending — a task list, to-do, checklist, lista de tareas, pendientes. Split a list of several things into separate items.",
+    inputSchema: z.object({
+      tasks: z
+        .array(z.string().min(1))
+        .min(1)
+        .describe('Each item on its own, e.g. ["buy milk", "call the landlord"].'),
+    }),
+    execute: async ({ tasks: texts }) => {
+      const added = await tasks.add(turn.chat, texts, turn.senderName);
+      if (added.length === 0) return "There was nothing to add.";
+      return `Added ${added.map((t) => `[${t.id}] ${t.text}`).join(", ")}.`;
+    },
+  }),
+
+  complete_tasks: tool({
+    description:
+      "Tick items off this chat's checklist. Ids are shown in the list below. Someone will usually describe the item rather than name an id — match it yourself and use the id.",
+    inputSchema: z.object({
+      ids: z.array(z.string()).min(1).describe('Ids from the list, e.g. ["t3", "t4"].'),
+      undo: z
+        .boolean()
+        .optional()
+        .describe("Set true to put an item back to pending instead of completing it."),
+    }),
+    execute: async ({ ids, undo }) => {
+      const changed = await tasks.setDone(turn.chat, ids, !undo, turn.senderName);
+      if (changed.length === 0) {
+        return "None of those ids are on this chat's list. Check the list before trying again.";
+      }
+      const what = changed.map((t) => `[${t.id}] ${t.text}`).join(", ");
+      return undo ? `Back to pending: ${what}.` : `Done: ${what}.`;
+    },
+  }),
+
+  remove_tasks: tool({
+    description:
+      "Delete items from this chat's checklist entirely. Use it when something should not be there at all — not when it has been finished, which is `complete_tasks`.",
+    inputSchema: z.object({
+      ids: z.array(z.string()).min(1).describe("Ids from the list."),
+      clearCompleted: z
+        .boolean()
+        .optional()
+        .describe("Set true to also clear every completed item, tidying the list."),
+    }),
+    execute: async ({ ids, clearCompleted }) => {
+      const removed = await tasks.remove(turn.chat, ids);
+      const cleared = clearCompleted ? await tasks.clearDone(turn.chat) : 0;
+      const parts = [
+        removed.length ? `Removed ${removed.map((t) => t.text).join(", ")}` : "",
+        cleared ? `cleared ${cleared} completed item${cleared === 1 ? "" : "s"}` : "",
+      ].filter(Boolean);
+      return parts.length ? `${parts.join(", ")}.` : "Nothing matched those ids.";
+    },
+  }),
 
   check_usage: tool({
     description:

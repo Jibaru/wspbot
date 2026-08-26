@@ -32,6 +32,11 @@ const FEATURES: { title: string; detail: string }[] = [
       "For anything current or specific enough that being wrong would matter — not for things it already knows.",
   },
   {
+    title: "Keeps a checklist",
+    detail:
+      "Each chat has its own pending list. Add items, tick them off, take them back off the list — in whatever words you use for it.",
+  },
+  {
     title: "Remembers",
     detail:
       "“Record that…” keeps a fact for the chat; some facts can be saved for every chat. Both survive restarts, and “forget that” removes them.",

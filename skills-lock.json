@@ -1,35 +1,11 @@
 {
   "version": 1,
   "skills": {
-    "go-persistence": {
-      "source": "Jibaru/skills",
-      "sourceType": "github",
-      "skillPath": "go-persistence/SKILL.md",
-      "computedHash": "a6a6a694ec098523e55d0635111ee77c4a48baba1816d279a13beaf8a331fef4"
-    },
-    "go-rest-api-architect": {
-      "source": "Jibaru/skills",
-      "sourceType": "github",
-      "skillPath": "go-rest-api-architect/SKILL.md",
-      "computedHash": "d5b287ca7342b48936ef11f56ca745e6701bae53831a669cbf85137fc022f2d6"
-    },
     "icongen": {
       "source": "Jibaru/skills",
       "sourceType": "github",
       "skillPath": "icongen/SKILL.md",
       "computedHash": "cf74ed7b285b679ce5a267dd1b42f4e92141818b772270217861d0bcd58a4879"
-    },
-    "pdf-deep-study": {
-      "source": "Jibaru/skills",
-      "sourceType": "github",
-      "skillPath": "pdf-deep-study/SKILL.md",
-      "computedHash": "f5055eedc4470e995fe98c336f8a8b4d70b802cff7bc5f7a479fd1e87ccbfefe"
-    },
-    "skill-maker": {
-      "source": "Jibaru/skills",
-      "sourceType": "github",
-      "skillPath": "skill-maker/SKILL.md",
-      "computedHash": "0077f29851b42254e2218308e8c6e262cfeb37893df3af8deb09ac25e5315ab1"
     },
     "wapi-nextjs": {
       "source": "crafter-station/wapi",

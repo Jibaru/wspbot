@@ -29,7 +29,7 @@ const FEATURES: { title: string; detail: string }[] = [
   {
     title: "Reacts with emoji",
     detail:
-      "Taps a 👍 or 🎉 onto a message instead of sending one — no notification, nothing added to the chat.",
+      "Weighs up whether each message deserves a reaction, and picks one that fits — 😂 🎉 🔥 👀 — rather than defaulting to 👍.",
   },
   {
     title: "Searches the web",

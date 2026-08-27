@@ -398,9 +398,17 @@ delete from rate_limits where user_id = '51922471582';
 
 ## Reactions
 
-The bot can react to a message with an emoji instead of sending one — the quiet acknowledgement:
-nothing is added to the chat and nobody is notified. It can react to the message that tagged it,
-or to the one that message was replying to.
+On every message it answers, the bot decides separately whether that message also deserves a
+reaction — and which emoji fits it. Most do not: a bot that reacts to everything becomes noise
+people learn to ignore. It reacts when there is something to register (funny, good news, a
+thank-you, a decision, something gone wrong), not to plain questions or routine requests.
+
+The emoji is chosen for the message — 😂 🎉 ❤️ 🔥 👀 ✅ 🤔 😅 💀 — with 👍 named in the prompt as
+the dullest option, to be used only when nothing better fits. Left to itself a model reaches for
+👍 every time, which reads as indifference.
+
+A reaction can accompany a reply or replace it, and never both say the same thing. It can go on
+the message that tagged the bot or on the one that message was replying to.
 
 This needs `POST /api/messages/react`, a wapi extension. It takes the WhatsApp **key**, not a
 `msgId`: you mostly react to messages someone *else* sent, and those have no `msgId` — that

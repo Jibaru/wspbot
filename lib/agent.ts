@@ -137,9 +137,16 @@ const systemPrompt = async (turn: Turn): Promise<string> => {
     "- `draw_sticker` invents a new sticker from a description and sends it. Use it when someone wants a sticker of something that does not exist yet. When they want a specific meme, a real person, or an existing picture, search for it and use `sticker_from_url` instead — drawing invents rather than finds, so pick by whether the thing already exists.",
     "- `send_sticker` sends one from the sticker library below, which is shared by every chat. Reach for it when a sticker answers better than words — a reaction, a joke, agreement — or when someone asks for one. Pick by what it shows, not by its id order. If nothing fits, do not force it; say something instead.",
     "- `check_usage` reports what you have cost so far. Use it when someone asks about tokens, usage or spending, and read the figures back plainly.",
-    "- `react` puts an emoji on a message instead of sending one. Prefer it for pure acknowledgement — agreement, thanks, amusement, \"seen it\" — since it adds nothing to the chat and notifies nobody. Do not both react and send a line saying the same thing.",
+    "- `react` puts an emoji on a message rather than sending one. See the section on reacting below.",
     "- `name_sticker` renames one. Use it when someone says what a sticker should be called, so it can be asked for by that name later.",
     "- After a tool has put something in the chat, add at most one short line of text — or none at all. Do not describe what you just sent; everyone can see it.",
+    "",
+    "Reacting:",
+    "- Every message you answer, decide separately whether it also deserves a reaction. It is a real question with a real answer either way — most messages do not, and a bot that reacts to everything is noise people learn to ignore.",
+    "- React when the message carries something to register: it is funny, it is good news, it is a thank-you, it is a decision, someone is being kind, something went wrong. Do not react to a plain question or a routine request.",
+    "- Choose the emoji for that particular message. 😂 for something genuinely funny, 🎉 for good news, ❤️ or 🥹 for warmth, 🔥 for something impressive, 👀 when you are about to go and look, ✅ when a thing is finished, 🤔 for something you find doubtful, 😅 for a near-miss, 💀 for the truly grim. 👍 is the dullest of them — reach for it only when nothing more specific fits, never as a default.",
+    "- A reaction can go with a reply or take its place. When acknowledgement is all that is wanted, react and say nothing: it adds no message and notifies nobody. Never react and then write a line meaning the same thing.",
+    "- One reaction per message. Do not react to your own messages.",
     "",
     ...(config.notion()
       ? [
@@ -829,13 +836,13 @@ const toolsFor = (turn: Turn, sent: string[]) => ({
 
   react: tool({
     description:
-      "Put an emoji reaction on a message, the way a person taps and holds one. Use it to acknowledge something without adding a message to the chat — agreement, thanks, amusement, or simply that you have seen it. Much lighter than replying: nobody gets a notification and nothing scrolls.",
+      "Put an emoji reaction on a message, the way a person taps and holds one. Consider it on every message you answer: it registers a feeling without adding anything to the chat and without notifying anyone. Pick the emoji that fits what was said, not a default.",
     inputSchema: z.object({
       emoji: z
         .string()
         .max(16)
         .describe(
-          "A single emoji, e.g. 👍 ❤️ 😂 🎉. Pass an empty string to remove a reaction you left earlier.",
+          "One emoji, chosen to fit this particular message — 😂 🎉 ❤️ 🔥 👀 ✅ 🤔 😅 💀 and so on. 👍 is the dullest choice; use it only when nothing more specific fits. Pass an empty string to remove a reaction left earlier.",
         ),
       target: z
         .enum(["their message", "the one they replied to"])

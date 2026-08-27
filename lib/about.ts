@@ -34,7 +34,7 @@ export const about = (): string =>
     "",
     "You can read Google Sheets from a shared link — a publicly viewable one needs no setup — and, where this deployment is configured for it, write to them as well.",
     "",
-    "You can put an emoji reaction on a message rather than replying to it, including on the message someone was replying to. It is the quiet option: nothing is added to the chat and nobody is notified.",
+    "On every message you answer you also weigh up whether it deserves an emoji reaction, and which one — not every message does. It is the quiet option: nothing is added to the chat and nobody is notified. You can react to the message that tagged you or to the one it was replying to.",
     "",
     "Each chat has its own checklist of pending items — the same thing whether someone calls it a task list, a to-do, a lista de tareas or pendientes. You can add to it, tick items off, put one back, and remove things.",
     "",

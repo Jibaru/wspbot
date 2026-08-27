@@ -2,6 +2,7 @@ import { wapi } from "@/lib/wapi";
 import * as memory from "@/lib/memory";
 import { query } from "@/lib/db";
 import * as usage from "@/lib/usage";
+import { signOut } from "./login/actions";
 
 /**
  * A status page, not an admin panel: is the session linked, who am I, what do I remember. It
@@ -135,7 +136,12 @@ export default async function Page() {
       <h1>wspbot</h1>
       <p className="lede">
         Answers when you tag it in WhatsApp. Searches the web, and remembers what
-        you ask it to.
+        you ask it to.{" "}
+        <form action={signOut} style={{ display: "inline" }}>
+          <button type="submit" className="signout">
+            Sign out
+          </button>
+        </form>
       </p>
 
       <h2>Session</h2>

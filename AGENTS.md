@@ -24,6 +24,9 @@ WhatsApp ──▶ wapi ──POST /api/wapi/webhook──▶ this app
 ```
 
 ```
+proxy.ts                         gates the dashboard (Next 16 renamed middleware -> proxy)
+app/login/                       sign-in page and its server action
+lib/auth.ts                      bcrypt at sign-in, signed cookie thereafter
 app/page.tsx                     status page: session, usage, stickers, memory
 app/api/wapi/webhook/route.ts    the only entry point for inbound messages
 instrumentation.ts               starts the session watchdog at boot
@@ -94,6 +97,9 @@ like a simplification opportunity.
 - **A claimed one-off reminder must have its `next_at` moved forward**, not left alone. Left
   alone the row is still due while it runs, and any run slower than the tick fires it twice —
   caught only by claiming the same row twice against a real database.
+- **The `proxy.ts` matcher must keep excluding `/api/`.** wapi calls the webhook and Notion the
+  OAuth callback; neither carries a session cookie, so gating them stops the bot receiving
+  messages — quietly, since the dashboard would still look fine.
 - **Groups only, and only when tagged.** DMs are ignored by default (`BOT_REPLY_TO_DMS`).
   Stickers are the sole exception: collected untagged, silently, never answered.
 

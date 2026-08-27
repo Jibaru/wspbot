@@ -79,6 +79,19 @@ export const config = {
   effort: () => optional("BOT_EFFORT") ?? "low",
 
   /**
+   * Who may open the dashboard. The password is stored only as a bcrypt hash, so the plaintext
+   * exists nowhere on the server — not in the environment, not in a log, not in a backup.
+   */
+  admin: (): { username: string; passwordHash: string } | null => {
+    const username = optional("ADMIN_USER");
+    const passwordHash = optional("ADMIN_PASSWORD_HASH");
+    return username && passwordHash ? { username, passwordHash } : null;
+  },
+
+  /** Signs the session cookie. Changing it signs everyone out, which is the emergency lever. */
+  authSecret: () => required("AUTH_SECRET"),
+
+  /**
    * The timezone people in these chats live in. Reminders are the reason it exists: "nine in the
    * morning" means nothing without it, and a bot on a UTC server would fire five hours early.
    */

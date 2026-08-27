@@ -201,3 +201,88 @@ ul.features span {
     column-gap: 1.6rem;
   }
 }
+
+/* ── sign-in ─────────────────────────────────────────────────────────── */
+
+main.signin {
+  min-height: 70dvh;
+  display: grid;
+  place-items: center;
+}
+
+main.signin form {
+  width: 100%;
+  max-width: 20rem;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 1.6rem;
+  display: grid;
+  gap: 0.35rem;
+}
+
+main.signin h1 {
+  margin: 0;
+}
+
+main.signin .lede {
+  margin: 0 0 1rem;
+}
+
+main.signin label {
+  font-size: 0.8rem;
+  color: var(--muted);
+  margin-top: 0.6rem;
+}
+
+main.signin input {
+  font: inherit;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--bg);
+  color: var(--text);
+}
+
+main.signin input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+main.signin button {
+  font: inherit;
+  font-weight: 600;
+  margin-top: 1.2rem;
+  padding: 0.6rem;
+  border: 0;
+  border-radius: 7px;
+  background: var(--accent);
+  color: var(--bg);
+  cursor: pointer;
+}
+
+main.signin button:hover {
+  filter: brightness(1.08);
+}
+
+main.signin .bad {
+  margin: 0.9rem 0 0;
+  font-size: 0.86rem;
+}
+
+/* Sits with the page heading rather than floating in a corner. */
+.signout {
+  font: inherit;
+  font-size: 0.8rem;
+  color: var(--muted);
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.signout:hover {
+  color: var(--text);
+}

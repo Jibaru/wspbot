@@ -30,8 +30,33 @@ handler that has to be publicly reachable. Which is exactly what deploying gives
 
 Two pages:
 
-- `/` — a status page. Session linked? Who am I? What do I remember?
+- `/` — a status page, behind a sign-in. Session linked? Who am I? What do I remember?
 - `/api/wapi/webhook` — where wapi delivers messages.
+
+## Signing in
+
+The dashboard shows the chats' memories, the sticker library, the WhatsApp identity behind the
+session and what it has all cost, so it is not readable by anyone who knows the URL.
+
+**The password is stored only as a bcrypt hash** (`ADMIN_PASSWORD_HASH`); the plaintext exists
+nowhere on the server. bcrypt runs *only* at sign-in — it is slow by design, which makes it a good
+password hash and a bad thing to run on every page view. Afterwards a **signed cookie** carries
+the session: HMAC-SHA256 over its own expiry, verified in microseconds.
+
+The failure message is the same for a wrong username and a wrong password, and bcrypt runs
+against a dummy hash even when the username is unknown — otherwise the response comes back
+measurably faster and says the same thing in timing.
+
+`proxy.ts` gates the pages. **Its matcher deliberately excludes `/api/`**: wapi calls the webhook
+and Notion calls the OAuth callback, and neither carries a cookie — gating them would silently
+stop the bot receiving messages. With no `AUTH_SECRET` set it fails *shut*, returning 503 rather
+than letting anyone in.
+
+```bash
+ADMIN_USER=jibaru
+ADMIN_PASSWORD_HASH=$2b$12$...   # node -e "console.log(require('bcryptjs').hashSync('...',12))"
+AUTH_SECRET=...                  # node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
+```
 
 ## Setup
 

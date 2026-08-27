@@ -37,6 +37,11 @@ const FEATURES: { title: string; detail: string }[] = [
       "For anything current or specific enough that being wrong would matter — not for things it already knows.",
   },
   {
+    title: "Schedules reminders",
+    detail:
+      "“Remind me at 9” or “every morning, check if it will rain and tell me”. One per person per chat; change or cancel it any time.",
+  },
+  {
     title: "Keeps a checklist",
     detail:
       "Each chat has its own pending list. Add items, tick them off, take them back off the list — in whatever words you use for it.",

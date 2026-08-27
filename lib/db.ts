@@ -131,6 +131,29 @@ const migrate = async (): Promise<void> => {
      * screen, exactly which pages that room may reach.
      */
     /*
+     * Scheduled reminders. One per person per chat, which the primary key enforces rather than
+     * any code: setting a second one is an upsert, so "change my reminder" and "create one" are
+     * the same operation and cannot drift apart.
+     */
+    create table if not exists reminders (
+      chat          text        not null,
+      user_id       text        not null,
+      -- What to do when it fires, in the person's own words. Run through the model, so it can
+      -- be "remind me to stretch" or "check whether it will rain and tell me".
+      prompt        text        not null,
+      asked_by      text,
+      next_at       timestamptz not null,
+      -- null means it fires once and is then removed.
+      every_minutes integer,
+      max_runs      integer,
+      runs          integer     not null default 0,
+      created_at    timestamptz not null default now(),
+      primary key (chat, user_id)
+    );
+    -- The due query runs every half minute and almost always returns nothing.
+    create index if not exists reminders_next_at_idx on reminders (next_at);
+
+    /*
      * Rate limiting. Two tables: what each person is allowed, and what they have actually done.
      *
      * rate_limits is meant to be edited by hand — there is no tool for it on purpose, since

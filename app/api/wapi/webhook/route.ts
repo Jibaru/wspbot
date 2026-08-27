@@ -154,6 +154,8 @@ async function handle({ event, data }: WebhookBody): Promise<void> {
     chat: message.chat,
     isGroup: message.isGroup,
     senderName: message.senderName,
+    // The same key the rate limiter uses, so a reminder belongs to a person, not a display name.
+    userId: mentions.identityKey(message.sender),
     text: text || "(no text)",
     // A sticker is collected, not raw material — everything else can become one.
     ...(message.media && message.media.kind !== "sticker"

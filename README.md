@@ -418,6 +418,28 @@ arrives whole on the webhook; the quoted one is rebuilt from `contextInfo.stanza
 
 An empty emoji clears a reaction.
 
+## Scheduled reminders
+
+*"Remind me at 9 to send the invoices"*, or *"every morning check whether it will rain in Lima
+and tell me"*. What is stored is a **prompt, not a message**: when it comes due the bot is run
+again with those words and every tool available, so the second example really does go and look.
+
+**One per person per chat**, which is the primary key rather than a check in code — so setting
+another replaces yours, and "create" and "change" are the same operation and cannot drift apart.
+It also bounds the damage: a group of ten has at most ten scheduled things.
+
+A firing is claimed with a single `update … returning`, so two overlapping ticks cannot both take
+it. A **one-off gets its time pushed an hour forward as it is claimed**, then deleted once it has
+run: without that it stayed due while it ran, and any run slower than the 30-second tick fired it
+twice. If the process dies mid-run the lease expires and it is retried rather than lost.
+
+Repeats have a five-minute floor, an optional run limit, and a hard ceiling — a schedule nobody
+remembers setting should not run forever.
+
+**Times need a timezone.** `BOT_TIMEZONE` (default `UTC`) is given to the model as the current
+local time *with its offset*, and scheduled times must come back with an offset. Without that, a
+model asked for "9am" produces a bare timestamp that is read as UTC and fires hours out.
+
 ## The checklist
 
 Each chat has a list of pending items. Say it however you say it — *checklist*, *task list*,
@@ -476,6 +498,7 @@ insert into memories (chat, text) values ('global', 'the office wifi password is
 | `BOT_IMAGE_MODEL` | `gpt-image-1` | Must support a transparent background. `-mini` is ~80% cheaper. |
 | `BOT_EFFORT` | `low` | Reasoning depth. Raise it if answers feel shallow, at the cost of latency. |
 | `BOT_REPLY_TO_DMS` | `false` | Answer one-to-one chats too. Groups always require a tag regardless. |
+| `BOT_TIMEZONE` | `UTC` | What "9am" means. Reminders are wrong without it. |
 | `BOT_RATE_LIMIT_PER_MINUTE` | `1` | Default allowance per person. Override individuals in the `rate_limits` table. |
 
 Replies are requested at low verbosity — a WhatsApp message that needs scrolling has already

@@ -91,6 +91,9 @@ like a simplification opportunity.
 - **Video must be re-encoded, not forwarded.** H.264 baseline / yuv420p / AAC in MP4 is what
   plays; VP9, HEVC and AV1 show a thumbnail that never starts, on every client. Same class as the
   voice-note bug and equally invisible locally. `npm run video-check` asserts it with ffprobe.
+- **A claimed one-off reminder must have its `next_at` moved forward**, not left alone. Left
+  alone the row is still due while it runs, and any run slower than the tick fires it twice —
+  caught only by claiming the same row twice against a real database.
 - **Groups only, and only when tagged.** DMs are ignored by default (`BOT_REPLY_TO_DMS`).
   Stickers are the sole exception: collected untagged, silently, never answered.
 

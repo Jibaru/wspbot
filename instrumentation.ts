@@ -11,4 +11,7 @@ export async function register() {
 
   const { startWatchdog } = await import("./lib/session");
   startWatchdog();
+
+  const { startReminders } = await import("./lib/reminder-runner");
+  startReminders();
 }

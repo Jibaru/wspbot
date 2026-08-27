@@ -79,6 +79,12 @@ export const config = {
   effort: () => optional("BOT_EFFORT") ?? "low",
 
   /**
+   * The timezone people in these chats live in. Reminders are the reason it exists: "nine in the
+   * morning" means nothing without it, and a bot on a UTC server would fire five hours early.
+   */
+  timezone: () => optional("BOT_TIMEZONE") ?? "UTC",
+
+  /**
    * Calls one person may make per minute before being turned away. Per-person overrides live in
    * the `rate_limits` table; this is only the fallback for anyone not listed there.
    */

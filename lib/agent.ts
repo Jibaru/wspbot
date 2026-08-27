@@ -21,6 +21,7 @@ import * as stickers from "./stickers";
 import * as notion from "./notion";
 import * as tasks from "./tasks";
 import * as sheets from "./sheets";
+import * as reminders from "./reminders";
 import { toVoiceNote, VOICE_NOTE_MIMETYPE, VOICE_NOTE_FILENAME } from "./audio";
 import { fetchDecrypted } from "./inbound-media";
 import { fetchMedia } from "./fetch-media";
@@ -71,6 +72,8 @@ export type Turn = {
    * mean?" means nothing without the thing.
    */
   quoted?: Quoted;
+  /** Stable key for the person speaking, for anything owned by them rather than by the chat. */
+  userId?: string;
   /** The message that triggered this turn, so it can be reacted to. */
   messageKey?: MessageKey;
   /** The message being replied to, when its key can be reconstructed. */
@@ -108,13 +111,15 @@ export const clearHistory = (chat: string): Promise<unknown[]> =>
   query("delete from messages where chat = $1", [chat]);
 
 const systemPrompt = async (turn: Turn): Promise<string> => {
-  const [memories, stickerList, notionConnection, openTasks, doneTasks] = await Promise.all([
-    memory.list(turn.chat).then(memory.render),
-    stickers.list().then(stickers.render),
-    config.notion() ? notion.connectionFor(turn.chat) : Promise.resolve(null),
-    tasks.open(turn.chat),
-    tasks.recentlyDone(turn.chat),
-  ]);
+  const [memories, stickerList, notionConnection, openTasks, doneTasks, scheduled] =
+    await Promise.all([
+      memory.list(turn.chat).then(memory.render),
+      stickers.list().then(stickers.render),
+      config.notion() ? notion.connectionFor(turn.chat) : Promise.resolve(null),
+      tasks.open(turn.chat),
+      tasks.recentlyDone(turn.chat),
+      reminders.forChat(turn.chat),
+    ]);
   return [
     `You are a helpful assistant living inside a WhatsApp ${turn.isGroup ? "group chat" : "chat"}, reached by tagging you.`,
     "",
@@ -166,6 +171,11 @@ const systemPrompt = async (turn: Turn): Promise<string> => {
     `- ${config.googleServiceAccount() ? "You can write as well: `sheet_update` changes a specific range, `sheet_append` adds rows at the end. Read before writing so you target the right row, name what you are about to change, and prefer appending over overwriting when either would do." : "You can only read. If someone wants a change made, say that writing is not set up on this deployment rather than pretending to have done it."}`,
     "- Answer questions like \"what is missing?\" by looking at the rows yourself and naming them, rather than describing the sheet in general terms.",
     "",
+    "Reminders:",
+    "- `set_reminder` schedules something for later — a nudge, or a job like checking something and reporting back. What you store is run through you again when it fires, with all your tools, so write it as an instruction to yourself rather than as a message to send.",
+    "- Each person has one reminder per chat. Setting another replaces theirs, which is also how you change one; `cancel_reminder` removes it. You cannot touch anybody else's.",
+    "- Work times out from the current time given below, and always include the offset. If someone is vague — \"later\", \"in a bit\" — ask when they mean rather than guessing.",
+    "",
     "The checklist:",
     "- This chat has a list of pending items, shown below. It is the same thing whether someone calls it a checklist, a task list, a to-do, *lista de tareas* or *pendientes*.",
     "- `add_tasks` puts things on it, `complete_tasks` ticks them off (or puts one back with undo), `remove_tasks` deletes something that should never have been there.",
@@ -193,7 +203,11 @@ const systemPrompt = async (turn: Turn): Promise<string> => {
       : []),
     about(),
     "",
-    `Today is ${new Date().toISOString().slice(0, 10)}.`,
+    // Time and offset, not just the date: scheduling needs both, and a bare date invites a guess.
+    `Right now it is ${reminders.nowForPrompt()}. Work out any time from that.`,
+    "",
+    "Scheduled in this chat:",
+    reminders.render(scheduled),
     "",
     "Checklist for this chat:",
     tasks.render(openTasks, doneTasks),
@@ -868,6 +882,85 @@ const toolsFor = (turn: Turn, sent: string[]) => ({
         console.error("[react] failed", why);
         return `Could not react: ${why}`;
       }
+    },
+  }),
+
+  set_reminder: tool({
+    description:
+      "Schedule something to happen later: a reminder, a repeating nudge, or a job like checking the forecast and reporting back. When it fires you will be run again with the words you store here, with every tool available — so store the task, not a message about the task. Each person gets one reminder per chat; setting another replaces theirs.",
+    inputSchema: z.object({
+      task: z
+        .string()
+        .min(3)
+        .describe(
+          'What to do when it fires, phrased as an instruction to yourself — "tell Ignacio to stretch", "check tomorrow\'s weather in Lima and say whether it will rain".',
+        ),
+      at: z
+        .string()
+        .describe(
+          "When it first fires, ISO 8601 with an explicit offset, e.g. 2026-08-28T09:00:00-05:00. Work it out from the current time given above; never send a time without an offset.",
+        ),
+      everyMinutes: z
+        .number()
+        .int()
+        .optional()
+        .describe(
+          `Repeat interval in minutes — 60 hourly, 1440 daily, 10080 weekly. Omit for a one-off. Minimum ${reminders.MIN_INTERVAL_MINUTES}.`,
+        ),
+      maxRuns: z
+        .number()
+        .int()
+        .positive()
+        .optional()
+        .describe("Stop after this many firings. Omit to repeat until cancelled."),
+    }),
+    execute: async ({ task, at, everyMinutes, maxRuns }) => {
+      const when = new Date(at);
+      if (Number.isNaN(when.getTime())) {
+        return `"${at}" is not a valid date. Use ISO 8601 with an offset.`;
+      }
+      // A minute of slack: the model computing "in 5 minutes" can land just behind now.
+      if (when.getTime() < Date.now() - 60_000) {
+        return `${reminders.localTime(when)} is in the past. Ask them when they mean, or work it out again from the current time.`;
+      }
+      if (everyMinutes !== undefined && everyMinutes < reminders.MIN_INTERVAL_MINUTES) {
+        return `Repeating every ${everyMinutes} minutes is too often; ${reminders.MIN_INTERVAL_MINUTES} is the minimum.`;
+      }
+
+      try {
+        const saved = await reminders.set({
+          chat: turn.chat,
+          userId: turn.userId ?? turn.senderName,
+          askedBy: turn.senderName,
+          prompt: task,
+          nextAt: when,
+          everyMinutes: everyMinutes ?? null,
+          maxRuns: maxRuns ?? null,
+        });
+        const cadence = saved.everyMinutes
+          ? `, then every ${saved.everyMinutes} minutes`
+          : "";
+        return `Set for ${reminders.localTime(saved.nextAt)}${cadence}.`;
+      } catch (err) {
+        const why = err instanceof Error ? err.message : String(err);
+        console.error("[set_reminder] failed", why);
+        return `Could not schedule it: ${why}`;
+      }
+    },
+  }),
+
+  cancel_reminder: tool({
+    description:
+      "Cancel the scheduled reminder belonging to the person you are talking to. Each person only has one in a chat, so no id is needed.",
+    inputSchema: z.object({}),
+    execute: async () => {
+      const removed = await reminders.cancel(
+        turn.chat,
+        turn.userId ?? turn.senderName,
+      );
+      return removed
+        ? `Cancelled: "${removed.prompt}".`
+        : "You have nothing scheduled in this chat.";
     },
   }),
 

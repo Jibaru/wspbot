@@ -8,6 +8,7 @@ import * as mentions from "@/lib/mentions";
 import * as stickers from "@/lib/stickers";
 import { ensureConnected } from "@/lib/session";
 import * as rateLimit from "@/lib/rate-limit";
+import * as features from "@/lib/features";
 
 /**
  * wapi webhook receiver — the only way inbound WhatsApp messages reach this app. wapi has no
@@ -105,7 +106,9 @@ async function handle({ event, data }: WebhookBody): Promise<void> {
    * from what people already send. So the "is this for me?" gate cannot decide whether to look
    * at a message, only whether to reply to one.
    */
-  const willCapture = message.media?.kind === "sticker";
+  const willCapture =
+    message.media?.kind === "sticker" &&
+    (await features.enabled()).has("stickers_collect");
 
   // Claimed only when there is work to do, so ignored chatter does not fill the table.
   if (!willReply && !willCapture) return;

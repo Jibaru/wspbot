@@ -30,8 +30,44 @@ handler that has to be publicly reachable. Which is exactly what deploying gives
 
 Two pages:
 
-- `/` — a status page, behind a sign-in. Session linked? Who am I? What do I remember?
+- `/` — the dashboard, behind a sign-in: Overview, Features, Rate limits, Stickers, Memory,
+  Reminders and Usage, each at its own URL.
 - `/api/wapi/webhook` — where wapi delivers messages.
+
+## The dashboard
+
+Seven sections, each at its own URL and each behind the sign-in:
+
+| | |
+| --- | --- |
+| `/` | Session, counts, spend |
+| `/features` | Switch abilities on and off |
+| `/limits` | Per-person rate limits |
+| `/stickers` | The shared library — rename, delete |
+| `/memory` | What it has been told to remember |
+| `/reminders` | Everything scheduled, across every chat |
+| `/usage` | Tokens and spend, broken down by model and kind |
+
+**A switch is real, not cosmetic.** Turning something off withdraws its tools *and* deletes the
+part of the system prompt that describes them, on the very next message — no deploy, no restart,
+nothing cached. Both halves matter: a model told about `send_voice_note` but not given it will
+promise a voice note and fail to send one, which reads as the bot being broken rather than as the
+feature being off.
+
+`lib/features.ts` is the single registry behind all of it. One entry per ability, naming the
+tools it owns, and it drives three things at once: the switches on the page, which tools a turn
+is given, and the sentence the bot says when someone asks what it can do. That last one used to
+be hand-written prose in a file nobody renders, so it rotted — the bot kept offering things that
+had been removed.
+
+Two checks guard the arrangement, because neither failure shows up in a typecheck:
+
+```bash
+npm run features-check   # every tool belongs to a switch, and every switch does something
+```
+
+A tool no feature owns can never be switched off. A feature owning no tools that nothing reads is
+a switch that stores a row and changes nothing. Both fail the check.
 
 ## Signing in
 
@@ -589,7 +625,7 @@ Background on all of it: `.agents/skills/wapi-nextjs/references/api-notes.md`.
 ## Layout
 
 ```
-app/page.tsx                     status page
+app/(dash)/                      the dashboard, one route per section
 app/api/wapi/webhook/route.ts    inbound: verify, ack, then reply
 lib/agent.ts                     the model turn: prompt, web search, memory tools
 lib/memory.ts                    facts, scoped per chat

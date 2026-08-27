@@ -28,7 +28,9 @@ proxy.ts                         gates the dashboard (Next 16 renamed middleware
 public/                          generated icon set; rebuild from public/icon.config.json
 app/login/                       sign-in page and its server action
 lib/auth.ts                      bcrypt at sign-in, signed cookie thereafter
-app/page.tsx                     status page: session, usage, stickers, memory
+app/(dash)/                      the dashboard: one route per section, all gated
+app/(dash)/layout.tsx            shell + section nav; app/(dash)/nav.tsx marks the current one
+lib/features.ts                  the feature registry: switches, tool ownership, self-description
 app/api/wapi/webhook/route.ts    the only entry point for inbound messages
 instrumentation.ts               starts the session watchdog at boot
 lib/agent.ts                     the model turn: prompt + every tool
@@ -102,6 +104,14 @@ like a simplification opportunity.
   imports, and nothing imports a favicon, so the directory is not in the trace. Everything in it
   then 404s in production while `next start` serves it locally — the icons were live in the
   HTML and missing from the image.
+- **The proxy matcher's `\\.` needs both backslashes.** `"\\."` in a TypeScript string is an
+  invalid escape that collapses to a plain `"."`, so an exclusion meant for files with an
+  extension quietly becomes *any non-empty path* — every page but the root falls out of the
+  gate. It typechecks, it builds, and `/` still redirects, so nothing looks wrong. `npm run
+  smoke` asserts what the string actually matches.
+- **A feature switch that owns no tools must be read by hand somewhere.** Tools are withdrawn
+  automatically; a prompt- or handler-only feature (`quoted`, `stickers_collect`) is inert
+  unless something checks it. `npm run features-check` fails when one is not.
 - **`ADMIN_PASSWORD_HASH` is base64, not the raw hash.** Docker Compose interpolates `$NAME` in
   env values, and a bcrypt hash is full of `$`. A raw hash arrives as `$2b$12` and every sign-in
   fails as "wrong password". `lib/config.ts` checks the shape and refuses a mangled one loudly.
@@ -126,9 +136,15 @@ like a simplification opportunity.
 - Schema changes go in the idempotent DDL in `lib/db.ts`, which runs on first query. **A throw
   there kills every request**, so verify a migration against a real database before deploying, and
   guard destructive steps so they run exactly once.
-- A new capability updates **both** feature lists: `FEATURES` in `app/page.tsx` (for people) and
-  the capability sentence in `lib/about.ts` (for the model). The second is prose in a file nobody
-  renders, so it rots silently — the bot then undersells itself when asked what it can do.
+- A new capability is **one entry in `FEATURES` in `lib/features.ts`**, and nothing else. That
+  registry is what the dashboard renders as switches, what withdraws the tools, and what
+  `lib/about.ts` builds the bot's own account of itself from. It exists because the same list
+  used to be written out in three places, and the prose one rotted silently — nothing renders it,
+  so the bot went on offering abilities it no longer had.
+- **A switch has to move the prompt as well as the tools.** Withdrawing `send_voice_note` while
+  leaving the paragraph that describes it just makes the bot promise something the turn cannot
+  deliver, which reads as broken rather than as switched off. `systemPrompt` gates every section
+  on the same key the tools use.
 - `lib/about.ts` describes the deployment, so it lives in code rather than the database — it
   should change in the same commit the deployment does. Nothing secret goes in it; it is read
   aloud to whoever asks.
@@ -136,7 +152,8 @@ like a simplification opportunity.
 ## Checks
 
 ```bash
-npm run smoke           # signature verification + "is this for me?" — no keys needed
+npm run smoke           # signature verification, "is this for me?", what the gate covers
+npm run features-check  # every tool belongs to a switch, and every switch does something
 npm run sticker-check   # real ffmpeg conversion + the SSRF guard (needs ffmpeg)
 npm run voice-check     # voice notes really are Ogg/Opus mono 48kHz, per ffprobe
 npm run draw-check      # one real image generation, checks alpha survives (costs money)

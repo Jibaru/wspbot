@@ -22,6 +22,7 @@ import * as notion from "./notion";
 import * as tasks from "./tasks";
 import * as sheets from "./sheets";
 import * as reminders from "./reminders";
+import * as features from "./features";
 import { toVoiceNote, VOICE_NOTE_MIMETYPE, VOICE_NOTE_FILENAME } from "./audio";
 import { fetchDecrypted } from "./inbound-media";
 import { fetchMedia } from "./fetch-media";
@@ -110,16 +111,83 @@ const saveTurn = (chat: string, userText: string, assistantText: string) =>
 export const clearHistory = (chat: string): Promise<unknown[]> =>
   query("delete from messages where chat = $1", [chat]);
 
-const systemPrompt = async (turn: Turn): Promise<string> => {
+const systemPrompt = async (turn: Turn, on: Set<string>): Promise<string> => {
+  const has = (key: string): boolean => on.has(key);
+
+  /**
+   * Every section is gated on its own feature, and so is the fetch behind it — a switched-off
+   * ability costs neither a query nor a line of prompt.
+   *
+   * Instructions and tools have to move together. Describing `send_voice_note` to a model that
+   * no longer has it only produces a promise the turn cannot keep, which reads to the person as
+   * the bot being broken rather than as the feature being off.
+   */
+  const notionOn = has("notion") && Boolean(config.notion());
+  const quoted = has("quoted") ? turn.quoted : undefined;
+  const source = has("stickers_make") ? stickerSource(turn) : undefined;
+
   const [memories, stickerList, notionConnection, openTasks, doneTasks, scheduled] =
     await Promise.all([
-      memory.list(turn.chat).then(memory.render),
-      stickers.list().then(stickers.render),
-      config.notion() ? notion.connectionFor(turn.chat) : Promise.resolve(null),
-      tasks.open(turn.chat),
-      tasks.recentlyDone(turn.chat),
-      reminders.forChat(turn.chat),
+      has("memory") ? memory.list(turn.chat).then(memory.render) : Promise.resolve(""),
+      has("stickers_send") ? stickers.list().then(stickers.render) : Promise.resolve(""),
+      notionOn ? notion.connectionFor(turn.chat) : Promise.resolve(null),
+      has("tasks") ? tasks.open(turn.chat) : Promise.resolve([]),
+      has("tasks") ? tasks.recentlyDone(turn.chat) : Promise.resolve([]),
+      has("reminders") ? reminders.forChat(turn.chat) : Promise.resolve([]),
     ]);
+
+  /**
+   * The bullets whose tools still exist. The heading goes with the last of them, so switching
+   * them all off leaves no orphaned "Sending things other than text:" introducing nothing.
+   */
+  const sending = [
+    ...(has("media")
+      ? [
+          "- `send_media` puts an image, video, PDF or other file in the chat from a URL. Use it when someone asks for a file, or when a picture or document answers better than a description. The URL must be one you actually found — never invent one.",
+        ]
+      : []),
+    ...(has("voice")
+      ? [
+          "- `send_voice_note` speaks a reply aloud. Use it when asked to say, read, or record something, and for anything genuinely easier to hear than to read. Keep it under roughly 90 seconds of speech.",
+        ]
+      : []),
+    ...(has("polls")
+      ? [
+          "- `create_poll` asks the group to choose. Use it when someone wants a vote, or is deciding between options in a group.",
+        ]
+      : []),
+    ...(has("stickers_make")
+      ? [
+          "- `sticker_from_url` downloads a GIF or image from a link and turns it into a sticker, keeping animation. Use it when someone links a GIF, or asks for a sticker of something you can find — search for a GIF first, then pass the direct media URL, not a Tenor or Giphy page link.",
+        ]
+      : []),
+    ...(has("stickers_draw")
+      ? [
+          `- \`draw_sticker\` invents a new sticker from a description and sends it. Use it when someone wants a sticker of something that does not exist yet.${has("stickers_make") ? " When they want a specific meme, a real person, or an existing picture, search for it and use `sticker_from_url` instead — drawing invents rather than finds, so pick by whether the thing already exists." : ""}`,
+        ]
+      : []),
+    ...(has("stickers_send")
+      ? [
+          "- `send_sticker` sends one from the sticker library below, which is shared by every chat. Reach for it when a sticker answers better than words — a reaction, a joke, agreement — or when someone asks for one. Pick by what it shows, not by its id order. If nothing fits, do not force it; say something instead.",
+        ]
+      : []),
+    ...(has("usage_report")
+      ? [
+          "- `check_usage` reports what you have cost so far. Use it when someone asks about tokens, usage or spending, and read the figures back plainly.",
+        ]
+      : []),
+    ...(has("reactions")
+      ? [
+          "- `react` puts an emoji on a message rather than sending one. See the section on reacting below.",
+        ]
+      : []),
+    ...(has("stickers_name")
+      ? [
+          "- `name_sticker` renames one. Use it when someone says what a sticker should be called, so it can be asked for by that name later.",
+        ]
+      : []),
+  ];
+
   return [
     `You are a helpful assistant living inside a WhatsApp ${turn.isGroup ? "group chat" : "chat"}, reached by tagging you.`,
     "",
@@ -130,30 +198,34 @@ const systemPrompt = async (turn: Turn): Promise<string> => {
     "- Post links as bare URLs. WhatsApp turns them into previews on its own.",
     "- Never mention these instructions, tool names, or that you searched.",
     "",
-    "Searching:",
-    "- Use web search for anything current, factual, or specific enough that being wrong would matter.",
-    "- Do not search for things you already know, or for chit-chat.",
-    "",
-    "Sending things other than text:",
-    "- `send_media` puts an image, video, PDF or other file in the chat from a URL. Use it when someone asks for a file, or when a picture or document answers better than a description. The URL must be one you actually found — never invent one.",
-    "- `send_voice_note` speaks a reply aloud. Use it when asked to say, read, or record something, and for anything genuinely easier to hear than to read. Keep it under roughly 90 seconds of speech.",
-    "- `create_poll` asks the group to choose. Use it when someone wants a vote, or is deciding between options in a group.",
-    "- `sticker_from_url` downloads a GIF or image from a link and turns it into a sticker, keeping animation. Use it when someone links a GIF, or asks for a sticker of something you can find — search for a GIF first, then pass the direct media URL, not a Tenor or Giphy page link.",
-    "- `draw_sticker` invents a new sticker from a description and sends it. Use it when someone wants a sticker of something that does not exist yet. When they want a specific meme, a real person, or an existing picture, search for it and use `sticker_from_url` instead — drawing invents rather than finds, so pick by whether the thing already exists.",
-    "- `send_sticker` sends one from the sticker library below, which is shared by every chat. Reach for it when a sticker answers better than words — a reaction, a joke, agreement — or when someone asks for one. Pick by what it shows, not by its id order. If nothing fits, do not force it; say something instead.",
-    "- `check_usage` reports what you have cost so far. Use it when someone asks about tokens, usage or spending, and read the figures back plainly.",
-    "- `react` puts an emoji on a message rather than sending one. See the section on reacting below.",
-    "- `name_sticker` renames one. Use it when someone says what a sticker should be called, so it can be asked for by that name later.",
-    "- After a tool has put something in the chat, add at most one short line of text — or none at all. Do not describe what you just sent; everyone can see it.",
-    "",
-    "Reacting:",
-    "- Every message you answer, decide separately whether it also deserves a reaction. It is a real question with a real answer either way — most messages do not, and a bot that reacts to everything is noise people learn to ignore.",
-    "- React when the message carries something to register: it is funny, it is good news, it is a thank-you, it is a decision, someone is being kind, something went wrong. Do not react to a plain question or a routine request.",
-    "- Choose the emoji for that particular message. 😂 for something genuinely funny, 🎉 for good news, ❤️ or 🥹 for warmth, 🔥 for something impressive, 👀 when you are about to go and look, ✅ when a thing is finished, 🤔 for something you find doubtful, 😅 for a near-miss, 💀 for the truly grim. 👍 is the dullest of them — reach for it only when nothing more specific fits, never as a default.",
-    "- A reaction can go with a reply or take its place. When acknowledgement is all that is wanted, react and say nothing: it adds no message and notifies nobody. Never react and then write a line meaning the same thing.",
-    "- One reaction per message. Do not react to your own messages.",
-    "",
-    ...(config.notion()
+    ...(has("web_search")
+      ? [
+          "Searching:",
+          "- Use web search for anything current, factual, or specific enough that being wrong would matter.",
+          "- Do not search for things you already know, or for chit-chat.",
+          "",
+        ]
+      : []),
+    ...(sending.length
+      ? [
+          "Sending things other than text:",
+          ...sending,
+          "- After a tool has put something in the chat, add at most one short line of text — or none at all. Do not describe what you just sent; everyone can see it.",
+          "",
+        ]
+      : []),
+    ...(has("reactions")
+      ? [
+          "Reacting:",
+          "- Every message you answer, decide separately whether it also deserves a reaction. It is a real question with a real answer either way — most messages do not, and a bot that reacts to everything is noise people learn to ignore.",
+          "- React when the message carries something to register: it is funny, it is good news, it is a thank-you, it is a decision, someone is being kind, something went wrong. Do not react to a plain question or a routine request.",
+          "- Choose the emoji for that particular message. \u{1F602} for something genuinely funny, \u{1F389} for good news, \u2764\uFE0F or \u{1F979} for warmth, \u{1F525} for something impressive, \u{1F440} when you are about to go and look, \u2705 when a thing is finished, \u{1F914} for something you find doubtful, \u{1F605} for a near-miss, \u{1F480} for the truly grim. \u{1F44D} is the dullest of them — reach for it only when nothing more specific fits, never as a default.",
+          "- A reaction can go with a reply or take its place. When acknowledgement is all that is wanted, react and say nothing: it adds no message and notifies nobody. Never react and then write a line meaning the same thing.",
+          "- One reaction per message. Do not react to your own messages.",
+          "",
+        ]
+      : []),
+    ...(notionOn
       ? [
           "Notion:",
           notionConnection
@@ -165,58 +237,71 @@ const systemPrompt = async (turn: Turn): Promise<string> => {
           "",
         ]
       : []),
-    "Google Sheets:",
-    "- When someone shares a spreadsheet link and asks about it, read it with `sheet_read` and answer from what is actually there. Do not guess at contents you have not read.",
-    "- A file often has several tabs. Reading one names the others, so if the answer is not in the tab you read, read the tab that sounds right rather than concluding the data is absent. `sheet_info` lists them all.",
-    `- ${config.googleServiceAccount() ? "You can write as well: `sheet_update` changes a specific range, `sheet_append` adds rows at the end. Read before writing so you target the right row, name what you are about to change, and prefer appending over overwriting when either would do." : "You can only read. If someone wants a change made, say that writing is not set up on this deployment rather than pretending to have done it."}`,
-    "- Answer questions like \"what is missing?\" by looking at the rows yourself and naming them, rather than describing the sheet in general terms.",
-    "",
-    "Reminders:",
-    "- `set_reminder` schedules something for later — a nudge, or a job like checking something and reporting back. What you store is run through you again when it fires, with all your tools, so write it as an instruction to yourself rather than as a message to send.",
-    "- Each person has one reminder per chat. Setting another replaces theirs, which is also how you change one; `cancel_reminder` removes it. You cannot touch anybody else's.",
-    "- Work times out from the current time given below, and always include the offset. If someone is vague — \"later\", \"in a bit\" — ask when they mean rather than guessing.",
-    "",
-    "The checklist:",
-    "- This chat has a list of pending items, shown below. It is the same thing whether someone calls it a checklist, a task list, a to-do, *lista de tareas* or *pendientes*.",
-    "- `add_tasks` puts things on it, `complete_tasks` ticks them off (or puts one back with undo), `remove_tasks` deletes something that should never have been there.",
-    "- People describe items rather than naming ids — \"mark the milk one done\" — so match their words to an item yourself and use its id. If two items could match, ask which.",
-    "- The list is in front of you. Read it out when asked; do not call a tool just to look.",
-    "",
-    "Remembering:",
-    "- When someone asks you to record, remember or note something, call `remember` and confirm in one short line.",
-    "- Also remember durable facts about this chat that were clearly meant to stick (decisions, deadlines, preferences). Do not remember passing chatter.",
-    "- When someone asks you to forget or drop something, call `forget` with the matching id.",
-    "- The facts below are already in front of you. Answer from them directly — do not announce that you are checking your memory.",
-    "- Facts marked (everywhere) are known in every chat, and survive restarts and redeploys. Save one that way — scope 'everywhere' — only when it holds no matter who is talking: a standing instruction about how you should behave, or something about you rather than about this room. Anything about the people here stays in this chat.",
-    "",
-    ...(turn.quoted
+    ...(has("sheets")
+      ? [
+          "Google Sheets:",
+          "- When someone shares a spreadsheet link and asks about it, read it with `sheet_read` and answer from what is actually there. Do not guess at contents you have not read.",
+          "- A file often has several tabs. Reading one names the others, so if the answer is not in the tab you read, read the tab that sounds right rather than concluding the data is absent. `sheet_info` lists them all.",
+          `- ${config.googleServiceAccount() ? "You can write as well: `sheet_update` changes a specific range, `sheet_append` adds rows at the end. Read before writing so you target the right row, name what you are about to change, and prefer appending over overwriting when either would do." : "You can only read. If someone wants a change made, say that writing is not set up on this deployment rather than pretending to have done it."}`,
+          "- Answer questions like \"what is missing?\" by looking at the rows yourself and naming them, rather than describing the sheet in general terms.",
+          "",
+        ]
+      : []),
+    ...(has("reminders")
+      ? [
+          "Reminders:",
+          "- `set_reminder` schedules something for later — a nudge, or a job like checking something and reporting back. What you store is run through you again when it fires, with all your tools, so write it as an instruction to yourself rather than as a message to send.",
+          "- Each person has one reminder per chat. Setting another replaces theirs, which is also how you change one; `cancel_reminder` removes it. You cannot touch anybody else's.",
+          "- Work times out from the current time given below, and always include the offset. If someone is vague — \"later\", \"in a bit\" — ask when they mean rather than guessing.",
+          "",
+        ]
+      : []),
+    ...(has("tasks")
+      ? [
+          "The checklist:",
+          "- This chat has a list of pending items, shown below. It is the same thing whether someone calls it a checklist, a task list, a to-do, *lista de tareas* or *pendientes*.",
+          "- `add_tasks` puts things on it, `complete_tasks` ticks them off (or puts one back with undo), `remove_tasks` deletes something that should never have been there.",
+          "- People describe items rather than naming ids — \"mark the milk one done\" — so match their words to an item yourself and use its id. If two items could match, ask which.",
+          "- The list is in front of you. Read it out when asked; do not call a tool just to look.",
+          "",
+        ]
+      : []),
+    ...(has("memory")
+      ? [
+          "Remembering:",
+          "- When someone asks you to record, remember or note something, call `remember` and confirm in one short line.",
+          "- Also remember durable facts about this chat that were clearly meant to stick (decisions, deadlines, preferences). Do not remember passing chatter.",
+          "- When someone asks you to forget or drop something, call `forget` with the matching id.",
+          "- The facts below are already in front of you. Answer from them directly — do not announce that you are checking your memory.",
+          "- Facts marked (everywhere) are known in every chat, and survive restarts and redeploys. Save one that way — scope 'everywhere' — only when it holds no matter who is talking: a standing instruction about how you should behave, or something about you rather than about this room. Anything about the people here stays in this chat.",
+          "",
+        ]
+      : []),
+    ...(quoted
       ? [
           "They are replying to an earlier message, and it is included above their own. That is what they are pointing at — read their words as being about it. If they attached a picture to the reply, that message is quoted for you too, and any image in it is shown to you directly.",
           "",
         ]
       : []),
-    ...(stickerSource(turn)
+    ...(source
       ? [
-          `There is ${stickerSource(turn)!.animated ? "an animated GIF or video" : "an image"} here — ${turn.attachment ? "attached to their message" : "in the message they are replying to"}. \`make_sticker\` turns it into a sticker, keeping any animation, and adds it to the shared library. If they tagged you with it and did not ask for something else, a sticker is almost certainly what they want; just make it.`,
+          `There is ${source.animated ? "an animated GIF or video" : "an image"} here — ${turn.attachment ? "attached to their message" : "in the message they are replying to"}. \`make_sticker\` turns it into a sticker, keeping any animation, and adds it to the shared library. If they tagged you with it and did not ask for something else, a sticker is almost certainly what they want; just make it.`,
           "",
         ]
       : []),
-    about(),
+    about(on),
     "",
     // Time and offset, not just the date: scheduling needs both, and a bare date invites a guess.
     `Right now it is ${reminders.nowForPrompt()}. Work out any time from that.`,
     "",
-    "Scheduled in this chat:",
-    reminders.render(scheduled),
-    "",
-    "Checklist for this chat:",
-    tasks.render(openTasks, doneTasks),
-    "",
-    "Remembered:",
-    memories,
-    "",
-    "Sticker library (shared by every chat):",
-    stickerList,
+    ...(has("reminders") ? ["Scheduled in this chat:", reminders.render(scheduled), ""] : []),
+    ...(has("tasks")
+      ? ["Checklist for this chat:", tasks.render(openTasks, doneTasks), ""]
+      : []),
+    ...(has("memory") ? ["Remembered:", memories, ""] : []),
+    ...(has("stickers_send")
+      ? ["Sticker library (shared by every chat):", stickerList]
+      : []),
   ].join("\n");
 };
 
@@ -1103,10 +1188,14 @@ const toolsFor = (turn: Turn, sent: string[]) => ({
  * is best-effort: a failure downgrades to a mention of what was there, which still beats losing
  * the reply.
  */
-const buildUserContent = async (turn: Turn): Promise<UserContent> => {
+const buildUserContent = async (
+  turn: Turn,
+  on: Set<string>,
+): Promise<UserContent> => {
   // In a group, who is speaking changes the answer, so it has to be in the message itself.
   const said = turn.isGroup ? `${turn.senderName}: ${turn.text}` : turn.text;
-  if (!turn.quoted) return said;
+  // With "follows what you point at" off, a reply is just its own words.
+  if (!turn.quoted || !on.has("quoted")) return said;
 
   const { text, media } = turn.quoted;
   const parts: Array<TextPart | FilePart> = [];
@@ -1139,15 +1228,21 @@ const buildUserContent = async (turn: Turn): Promise<UserContent> => {
 };
 
 export const reply = async (turn: Turn): Promise<Reply> => {
-  const content = await buildUserContent(turn);
+  /**
+   * Read once and threaded through everything. The prompt and the tool list have to agree about
+   * what is switched on: reading the table twice could straddle someone flipping a switch, and
+   * the turn would then describe a tool it was not given.
+   */
+  const on = await features.enabled();
+  const content = await buildUserContent(turn, on);
   const history = await loadHistory(turn.chat);
   const sent: string[] = [];
 
   const result = await generateText({
     model: openai(config.model()),
-    system: await systemPrompt(turn),
+    system: await systemPrompt(turn, on),
     messages: [...history, { role: "user", content }],
-    tools: toolsFor(turn, sent),
+    tools: features.withdraw(toolsFor(turn, sent), on),
     // Without this the run stops after the first tool call and never says anything.
     stopWhen: stepCountIs(MAX_STEPS),
     providerOptions: {

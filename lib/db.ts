@@ -195,6 +195,18 @@ const migrate = async (): Promise<void> => {
     -- Open tasks of one chat, in order: the query the prompt makes on every single turn.
     create index if not exists tasks_chat_idx on tasks (chat, done, id);
 
+    /*
+     * Which abilities are switched off, set from the dashboard. Only deviations are stored:
+     * no row means on, so a feature added in a later release arrives enabled without a
+     * migration, and this stays a list of decisions somebody made rather than a mirror of
+     * the registry in lib/features.ts.
+     */
+    create table if not exists features (
+      key        text primary key,
+      enabled    boolean     not null,
+      updated_at timestamptz not null default now()
+    );
+
     create table if not exists notion_connections (
       chat           text primary key,
       access_token   text        not null,

@@ -86,6 +86,12 @@ export const nowForPrompt = (): string => {
   return `${get("year")}-${get("month")}-${get("day")}T${get("hour")}:${get("minute")}${offset} (${tz})`;
 };
 
+/** Every scheduled item across every chat, soonest first — the dashboard's view of them. */
+export const all = async (): Promise<Reminder[]> => {
+  const rows = await query<Row>(`select ${COLUMNS} from reminders order by next_at`);
+  return rows.map(toReminder);
+};
+
 export const forChat = async (chat: string): Promise<Reminder[]> => {
   const rows = await query<Row>(
     `select ${COLUMNS} from reminders where chat = $1 order by next_at`,

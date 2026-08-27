@@ -109,6 +109,71 @@ export const refusalMessage = (decision: Extract<Decision, { allowed: false }>):
   `You exceeded the limit of ${decision.quota} message${decision.quota === 1 ? "" : "s"} per minute. ` +
   `Wait ${decision.waitSeconds} second${decision.waitSeconds === 1 ? "" : "s"}.`;
 
+export type Quota = {
+  userId: string;
+  perMinute: number;
+  note: string | null;
+  updatedAt: Date;
+};
+
+/**
+ * The quotas someone has actually set. Anyone absent gets the deployment default, so this is a
+ * list of exceptions rather than of people.
+ */
+export const listQuotas = async (): Promise<Quota[]> => {
+  const rows = await query<{
+    user_id: string;
+    per_minute: number;
+    note: string | null;
+    updated_at: Date;
+  }>("select user_id, per_minute, note, updated_at from rate_limits order by updated_at desc");
+  return rows.map((r) => ({
+    userId: r.user_id,
+    perMinute: r.per_minute,
+    note: r.note,
+    updatedAt: r.updated_at,
+  }));
+};
+
+export const setQuota = async (
+  userId: string,
+  perMinute: number,
+  note: string | null,
+): Promise<void> => {
+  await query(
+    `insert into rate_limits (user_id, per_minute, note) values ($1, $2, $3)
+     on conflict (user_id) do update
+       set per_minute = excluded.per_minute, note = excluded.note, updated_at = now()`,
+    [userId, perMinute, note],
+  );
+};
+
+/** Removing the row returns that person to the default rather than giving them no limit. */
+export const clearQuota = (userId: string): Promise<unknown[]> =>
+  query("delete from rate_limits where user_id = $1", [userId]);
+
+export type Caller = { userId: string; calls: number; lastAt: Date };
+
+/**
+ * Who has been calling, so a quota can be set from the dashboard without going and finding a
+ * raw JID by hand. It only reaches back as far as `prune` leaves it — an hour — which is also
+ * exactly the window in which someone is hitting a limit and you want to look.
+ */
+export const recentCallers = async (): Promise<Caller[]> => {
+  const rows = await query<{ user_id: string; calls: string; last_at: Date }>(
+    `select user_id, count(*)::text as calls, max(at) as last_at
+       from bot_calls
+      where kind = 'call'
+      group by user_id
+      order by max(at) desc`,
+  );
+  return rows.map((r) => ({
+    userId: r.user_id,
+    calls: Number(r.calls),
+    lastAt: r.last_at,
+  }));
+};
+
 /**
  * Old rows serve no purpose once they leave the window; an hour is plenty of slack for any
  * clock skew. Called from the session watchdog, which already ticks on a timer.

@@ -2,6 +2,7 @@ import "server-only";
 import { reply } from "./agent";
 import { wapi } from "./wapi";
 import * as reminders from "./reminders";
+import * as features from "./features";
 
 /**
  * Firing scheduled reminders.
@@ -56,6 +57,13 @@ const run = async (reminder: reminders.Reminder): Promise<void> => {
 
 const tick = async (): Promise<void> => {
   try {
+    /*
+     * Switched off means nothing is claimed, not that due rows are consumed and dropped. An
+     * overdue reminder then fires when the feature comes back, which is the same behaviour as
+     * the container having been down — and far better than silently eating what people asked for.
+     */
+    if (!(await features.enabled()).has("reminders")) return;
+
     const due = await reminders.claimDue(BATCH);
     // Sequential: a batch of reminders each doing web searches should not stampede the API.
     for (const reminder of due) await run(reminder);

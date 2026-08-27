@@ -5,6 +5,7 @@
  * Needs no database, no WhatsApp session and no OpenAI key — run it any time with `npm run smoke`.
  */
 import { createHmac } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { verify } from "../lib/signature";
 import * as mentions from "../lib/mentions";
 import { encodeState, decodeState } from "../lib/oauth-state";
@@ -334,6 +335,36 @@ console.log("\nOAuth state (which chat a Notion connection belongs to):");
 
   // Two links for the same chat must differ, or one could be replayed as the other.
   check("two states differ", encodeState(CHAT, SECRET) !== encodeState(CHAT, SECRET), true);
+}
+
+/**
+ * What the proxy matcher actually gates.
+ *
+ * Read out of `proxy.ts` as source and evaluated, because the bug this exists to catch lives in
+ * the difference between the two: `"\."` in a TypeScript string is an invalid escape that
+ * collapses to `"."`, so an exclusion meant for files with an extension quietly became "any
+ * non-empty path" and left every page but the root open. It typechecked, it built, and the root
+ * still redirected, so nothing looked wrong.
+ */
+{
+  console.log("\nproxy matcher:");
+  const source = readFileSync(new URL("../proxy.ts", import.meta.url), "utf8");
+  const line = source.split(/\r?\n/).find((l) => l.includes("(?!login"));
+  const pattern: string = eval(line!.trim().replace(/,$/, ""));
+  const gates = (path: string): boolean => new RegExp(`^${pattern}$`).test(path);
+
+  // Pages: every one of these must be behind the sign-in.
+  for (const path of ["/", "/features", "/limits", "/stickers", "/memory", "/reminders", "/usage"]) {
+    check(`gates ${path}`, gates(path), true);
+  }
+  // Called by wapi and by Notion with no cookie; gating either breaks the bot silently.
+  check("leaves /api/wapi/webhook open", gates("/api/wapi/webhook"), false);
+  check("leaves /api/notion/callback open", gates("/api/notion/callback"), false);
+  check("leaves /login open", gates("/login"), false);
+  // Static files, which a signed-out browser has to be able to fetch or the tab has no icon.
+  check("leaves /favicon.svg open", gates("/favicon.svg"), false);
+  check("leaves /site.webmanifest open", gates("/site.webmanifest"), false);
+  check("leaves /_next/static/x.js open", gates("/_next/static/x.js"), false);
 }
 
 const parsed = mentions.parse(

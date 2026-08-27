@@ -26,8 +26,13 @@ export const config = {
     /*
      * Everything except: the sign-in page and its action, the API routes that outside services
      * call, Next's own assets, and any path with a file extension.
+     *
+     * The doubled backslash is load-bearing. `"\."` in a TypeScript string is an invalid
+     * escape that collapses to a plain `"."`, turning the exclusion into "any non-empty path"
+     * — which silently ungated every page but the root. `npm run smoke` asserts the behaviour
+     * of this string so it cannot happen again quietly.
      */
-    "/((?!login|api/|_next/|.*\.).*)",
+    "/((?!login|api/|_next/|.*\\.).*)",
   ],
 };
 

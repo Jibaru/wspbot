@@ -25,6 +25,7 @@ WhatsApp ──▶ wapi ──POST /api/wapi/webhook──▶ this app
 
 ```
 proxy.ts                         gates the dashboard (Next 16 renamed middleware -> proxy)
+public/                          generated icon set; rebuild from public/icon.config.json
 app/login/                       sign-in page and its server action
 lib/auth.ts                      bcrypt at sign-in, signed cookie thereafter
 app/page.tsx                     status page: session, usage, stickers, memory
@@ -100,9 +101,12 @@ like a simplification opportunity.
 - **`ADMIN_PASSWORD_HASH` is base64, not the raw hash.** Docker Compose interpolates `$NAME` in
   env values, and a bcrypt hash is full of `$`. A raw hash arrives as `$2b$12` and every sign-in
   fails as "wrong password". `lib/config.ts` checks the shape and refuses a mangled one loudly.
-- **The `proxy.ts` matcher must keep excluding `/api/`.** wapi calls the webhook and Notion the
-  OAuth callback; neither carries a session cookie, so gating them stops the bot receiving
-  messages — quietly, since the dashboard would still look fine.
+- **The `proxy.ts` matcher must keep excluding `/api/` and anything with a file extension.**
+  wapi calls the webhook and Notion the OAuth callback; neither carries a session cookie, so
+  gating them stops the bot receiving messages — quietly, since the dashboard would still look
+  fine. Static files need the same exemption: naming `favicon.ico` alone left the rest of the
+  icon set answering a signed-out browser with a redirect, so the tab icon and the manifest
+  simply never loaded.
 - **Groups only, and only when tagged.** DMs are ignored by default (`BOT_REPLY_TO_DMS`).
   Stickers are the sole exception: collected untagged, silently, never answered.
 

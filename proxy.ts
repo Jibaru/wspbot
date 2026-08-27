@@ -11,6 +11,12 @@ import { SESSION_COOKIE, verifySession } from "./lib/auth";
  * silently stop the bot receiving messages or finishing an OAuth flow. So this covers the pages
  * only, and the API routes are explicitly excluded rather than left to a broad pattern.
  *
+ * Static files are excluded by having a dot in the name, which is every icon, the manifest and
+ * anything else dropped into `public/`. Naming `favicon.ico` alone was not enough: the rest of
+ * the icon set answered a signed-out browser with a redirect, so the tab fell back to a blank
+ * page icon and the manifest never loaded. None of it is private, and no page route here has a
+ * dot in its path.
+ *
  * Only the signed cookie is checked here. bcrypt lives in the sign-in action, because it is
  * deliberately slow and has no business running on every page view.
  */
@@ -19,9 +25,9 @@ export const config = {
   matcher: [
     /*
      * Everything except: the sign-in page and its action, the API routes that outside services
-     * call, and Next's own assets.
+     * call, Next's own assets, and any path with a file extension.
      */
-    "/((?!login|api/|_next/|favicon.ico).*)",
+    "/((?!login|api/|_next/|.*\.).*)",
   ],
 };
 

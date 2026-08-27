@@ -97,6 +97,9 @@ like a simplification opportunity.
 - **A claimed one-off reminder must have its `next_at` moved forward**, not left alone. Left
   alone the row is still due while it runs, and any run slower than the tick fires it twice —
   caught only by claiming the same row twice against a real database.
+- **`ADMIN_PASSWORD_HASH` is base64, not the raw hash.** Docker Compose interpolates `$NAME` in
+  env values, and a bcrypt hash is full of `$`. A raw hash arrives as `$2b$12` and every sign-in
+  fails as "wrong password". `lib/config.ts` checks the shape and refuses a mangled one loudly.
 - **The `proxy.ts` matcher must keep excluding `/api/`.** wapi calls the webhook and Notion the
   OAuth callback; neither carries a session cookie, so gating them stops the bot receiving
   messages — quietly, since the dashboard would still look fine.

@@ -54,9 +54,23 @@ than letting anyone in.
 
 ```bash
 ADMIN_USER=jibaru
-ADMIN_PASSWORD_HASH=$2b$12$...   # node -e "console.log(require('bcryptjs').hashSync('...',12))"
-AUTH_SECRET=...                  # node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
+ADMIN_PASSWORD_HASH=JDJiJDEyJC4uLg==   # base64 of the bcrypt hash — see below
+AUTH_SECRET=...   # node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
 ```
+
+```bash
+node -e "console.log(Buffer.from(require('bcryptjs').hashSync(process.argv[1],12)).toString('base64'))" 'your-password'
+```
+
+**The hash is stored base64-encoded**, and the reason is worth knowing because it fails silently.
+A bcrypt hash contains `$`, and Docker Compose interpolates `$NAME` in environment values. `$2b`
+and `$12` survive — a variable name cannot start with a digit — but a salt usually starts with a
+letter, so the rest of the hash is read as a variable name and replaced with nothing. The
+container gets `$2b$12`: long enough to look configured, useless to compare against. Every
+sign-in then fails as "wrong password", with nothing anywhere explaining why.
+
+Base64 has no `$`, so nothing can eat it. A raw hash is still accepted — convenient locally,
+where Next reads `.env` directly and no interpolation happens.
 
 ## Setup
 

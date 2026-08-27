@@ -40,6 +40,10 @@ RUN addgroup -S -g 1001 nodejs && adduser -S -u 1001 -G nodejs nextjs
 # modules it actually imports rather than all of node_modules.
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+# Standalone traces imports, and nothing imports a favicon — `public/` is not part of the
+# trace and has to be copied explicitly. Miss it and every file in it 404s in production
+# while working perfectly in `next start` locally.
+COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 
 USER nextjs
 EXPOSE 3000

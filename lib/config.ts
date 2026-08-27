@@ -9,6 +9,40 @@ const required = (name: string): string => {
   return value;
 };
 
+/**
+ * A complete bcrypt hash: `$2b$12$` followed by 53 characters of salt and digest.
+ */
+const BCRYPT = /^\$2[aby]?\$\d{2}\$[./A-Za-z0-9]{53}$/;
+
+/**
+ * The hash, accepted either raw or base64-encoded — and base64 is what deployment should use,
+ * for a mundane but vicious reason.
+ *
+ * A bcrypt hash contains `$`, and Docker Compose interpolates `$NAME` in environment values.
+ * `$2b` and `$12` survive, because a variable name cannot begin with a digit — but a salt
+ * usually starts with a letter, so the rest of the hash is read as a variable name and replaced
+ * with nothing. The container is then handed `$2b$12`: long enough to look configured, useless
+ * to compare against. Every sign-in fails as "wrong password" and nothing says why.
+ *
+ * So the shape is checked here. An unusable value is treated as no value at all, which surfaces
+ * as "no credentials are configured" — wrong, but wrong in a way that can be diagnosed.
+ */
+const adminPasswordHash = (): string | undefined => {
+  const raw = optional("ADMIN_PASSWORD_HASH");
+  if (!raw) return undefined;
+  if (BCRYPT.test(raw)) return raw;
+
+  const decoded = Buffer.from(raw, "base64").toString("utf8");
+  if (BCRYPT.test(decoded)) return decoded;
+
+  console.warn(
+    "[config] ADMIN_PASSWORD_HASH is not a usable bcrypt hash — nobody can sign in. " +
+      "If it looks truncated to `$2b$12`, Docker Compose ate the rest: store it base64-encoded " +
+      "(`base64 -w0`) rather than raw.",
+  );
+  return undefined;
+};
+
 export const config = {
   wapiBaseUrl: () => optional("WAPI_BASE_URL") ?? "https://api.wapi.crafter.run",
 
@@ -84,7 +118,7 @@ export const config = {
    */
   admin: (): { username: string; passwordHash: string } | null => {
     const username = optional("ADMIN_USER");
-    const passwordHash = optional("ADMIN_PASSWORD_HASH");
+    const passwordHash = adminPasswordHash();
     return username && passwordHash ? { username, passwordHash } : null;
   },
 

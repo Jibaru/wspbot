@@ -46,6 +46,7 @@ lib/fetch-media.ts               guarded remote downloads (SSRF)
 lib/mentions.ts                  parsing message nodes, "is this for me?"
 lib/session.ts                   reconnecting a dropped WhatsApp session
 lib/usage.ts                     token accounting, cost estimate
+lib/wapi-sdk/                    the official wapi SDK, vendored (see below)
 lib/signature.ts  lib/wapi.ts  lib/db.ts  lib/config.ts
 ```
 
@@ -104,6 +105,16 @@ like a simplification opportunity.
   imports, and nothing imports a favicon, so the directory is not in the trace. Everything in it
   then 404s in production while `next start` serves it locally — the icons were live in the
   HTML and missing from the image.
+- **The wapi SDK is vendored, not installed, and needs one edit on the way in.** It is not
+  published to npm; `npm run vendor-wapi-sdk` fetches it with `giget` and then strips the `.js`
+  suffix from its relative imports. That second step is not cosmetic: the SDK is written for
+  Node's ESM rules, TypeScript resolves `./http.js` back to `.ts` under `moduleResolution:
+  "bundler"`, and **Turbopack does not** — so `tsc --noEmit` passes while `next build` fails.
+  Current copy: `crafter-station/wapi@5f407fd`.
+- **The SDK's send union forbids a caption on a document; the API allows one.**
+  `PostApiSendMessageBody` has `text` and `documentUrl` as independent optional fields, so
+  `lib/wapi.ts` widens the type deliberately. Narrowing to match the SDK would drop the caption
+  from every PDF the bot sends — a behaviour change wearing a refactor's clothes.
 - **The proxy matcher's `\\.` needs both backslashes.** `"\\."` in a TypeScript string is an
   invalid escape that collapses to a plain `"."`, so an exclusion meant for files with an
   extension quietly becomes *any non-empty path* — every page but the root falls out of the
@@ -154,6 +165,9 @@ like a simplification opportunity.
 ```bash
 npm run smoke           # signature verification, "is this for me?", what the gate covers
 npm run features-check  # every tool belongs to a switch, and every switch does something
+npm run wapi-check      # the vendored SDK against the real API: envelopes, both error types,
+                        # and one real send into a throwaway sandbox session (needs WAPI_PAT)
+npm run vendor-wapi-sdk # refresh lib/wapi-sdk from upstream, with the import fixup
 npm run sticker-check   # real ffmpeg conversion + the SSRF guard (needs ffmpeg)
 npm run voice-check     # voice notes really are Ogg/Opus mono 48kHz, per ffprobe
 npm run draw-check      # one real image generation, checks alpha survives (costs money)

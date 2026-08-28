@@ -2,7 +2,7 @@ import { after } from "next/server";
 import { verify } from "@/lib/signature";
 import { config } from "@/lib/config";
 import { query } from "@/lib/db";
-import { wapi } from "@/lib/wapi";
+import { wapi, type MessageKey } from "@/lib/wapi";
 import { reply, clearHistory } from "@/lib/agent";
 import * as mentions from "@/lib/mentions";
 import * as stickers from "@/lib/stickers";
@@ -142,8 +142,20 @@ async function handle({ event, data }: WebhookBody): Promise<void> {
     return;
   }
 
+  /**
+   * The message's own key, built once. It addresses the message for both marking it read and
+   * reacting to it — the raw payload key is passed through by `mentions.parse` untyped, and
+   * reconstructing it here is what makes it the shape the SDK asks for.
+   */
+  const key: MessageKey = {
+    id: message.messageId,
+    remoteJid: message.chat,
+    fromMe: false,
+    ...(message.isGroup ? { participant: message.sender } : {}),
+  };
+
   // Best effort — blue ticks are not worth failing a reply over.
-  await wapi.markRead(message.key).catch(() => {});
+  await wapi.markRead(key).catch(() => {});
 
   const text = mentions.stripMentions(message.text, identity);
 
@@ -171,12 +183,7 @@ async function handle({ event, data }: WebhookBody): Promise<void> {
      * the quoted one is rebuilt from its stanzaId, and `fromMe` is settled here because only
      * this layer knows which identities are ours.
      */
-    messageKey: {
-      id: message.messageId,
-      remoteJid: message.chat,
-      fromMe: false,
-      ...(message.isGroup ? { participant: message.sender } : {}),
-    },
+    messageKey: key,
     ...(message.quoted?.id
       ? {
           quotedKey: {

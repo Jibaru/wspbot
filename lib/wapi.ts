@@ -1,104 +1,81 @@
 import "server-only";
+import { WapiClient, WapiError } from "./wapi-sdk/index";
+import type { SendMessageInput as SdkSendMessageInput } from "./wapi-sdk/index";
 import { config } from "./config";
 
 /**
- * wapi client.
+ * wapi, through the official TypeScript SDK.
  *
- * Server-only by construction: `server-only` makes importing this from a client component a
- * build error rather than a leaked WhatsApp credential.
+ * The SDK is vendored into `lib/wapi-sdk/` rather than installed: it is not published to npm,
+ * and the documented way to take it is `giget` from the source repository. See AGENTS.md for the
+ * commit this copy came from and how to refresh it.
  *
- * Deliberately dependency-free. The value it adds is handling the parts of the API that are not
- * guessable from the endpoint names — five success envelopes, two failure envelopes, and two
- * token types on the same header. Background:
- * `.agents/skills/wapi-nextjs/references/api-notes.md`.
+ * What remains here is the part that is ours rather than the API's: `server-only`, so importing
+ * this from a client component is a build error rather than a leaked WhatsApp credential; the
+ * identity cache; and the two clients, since a client holds exactly one credential.
+ *
+ * The surface is unchanged from the hand-rolled client it replaces, so nothing else in the app
+ * had to move. Everything the SDK does better — the envelope handling, the typed errors, the
+ * request timeout — it now does instead of us.
  */
 
-export class WapiError extends Error {
-  constructor(
-    readonly status: number,
-    message: string,
-    readonly fields?: Record<string, string[]>,
-    readonly retryAfter?: number,
-  ) {
-    super(message);
-    this.name = "WapiError";
-  }
+/**
+ * `WapiError` carries `status` and `body`; `WapiAuthError.isWrongCredentialType` distinguishes
+ * a 403 (the wrong *kind* of token, a config mistake) from a 401 (a bad one).
+ */
+export { WapiError, WapiAuthError, WapiValidationError, WapiRateLimitError } from "./wapi-sdk/index";
+export type { MessageKey } from "./wapi-sdk/index";
 
-  /** 403 is the wrong credential *type*, not a bad token — a config mistake, not an auth one. */
-  get isWrongCredentialType() {
-    return this.status === 403;
-  }
-}
-
-type Envelope = {
-  success?: boolean;
-  data?: unknown;
-  error?: string;
-  message?: string;
-  errors?: Record<string, string[]>;
-  retry_after?: number;
-  [k: string]: unknown;
+/**
+ * Cached on `globalThis` so a dev hot-reload does not build a new client per edit, and so the
+ * credential is read from the environment once rather than on every call.
+ */
+const g = globalThis as unknown as {
+  wspbotWapi?: WapiClient;
+  wspbotWapiAdmin?: WapiClient;
 };
 
-async function request(path: string, init: RequestInit = {}): Promise<Envelope> {
-  const res = await fetch(`${config.wapiBaseUrl()}${path}`, {
-    ...init,
-    headers: {
-      Authorization: `Bearer ${config.wapiApiKey()}`,
-      "Content-Type": "application/json",
-      ...(init.headers ?? {}),
-    },
-    // Message state changes constantly; a cached send or status is always wrong.
-    cache: "no-store",
-  });
+/** The session key: messaging, media, contacts, groups. */
+const client = (): WapiClient =>
+  (g.wspbotWapi ??= new WapiClient({
+    apiKey: config.wapiApiKey(),
+    baseUrl: config.wapiBaseUrl(),
+  }));
 
-  if (res.status === 204) return {};
-
-  const body = (await res.json().catch(() => ({}))) as Envelope;
-
-  if (!res.ok) {
-    // Route handlers set `error`; middleware sets `message`. Reading one loses half the failures.
-    const message =
-      body.error ?? body.message ?? `wapi request failed with ${res.status}`;
-    throw new WapiError(res.status, message, body.errors, body.retry_after);
-  }
-
-  return body;
-}
-
-const unwrap = <T>(body: Envelope): T => (body.data as T) ?? (body as T);
+/**
+ * A second client for the Personal Access Token, because the two credentials are not
+ * interchangeable and a client holds exactly one. `connect` is a session-admin route: the
+ * session key gets a 403 there, not a 401.
+ */
+const admin = (): WapiClient => {
+  const pat = config.wapiPatOptional();
+  if (!pat) throw new WapiError(0, "WAPI_PAT is not set");
+  return (g.wspbotWapiAdmin ??= new WapiClient({
+    apiKey: pat,
+    baseUrl: config.wapiBaseUrl(),
+  }));
+};
 
 export type SendResult = { msgId: number; jid: string; status: string };
 
 /**
- * One endpoint sends every message type; the field you set decides which.
+ * What we send, which is the SDK's union plus one deliberate widening: it does not allow a
+ * caption alongside a document, and we send one.
  *
- * Typed as a union rather than an object of optionals so that setting two content fields is a
- * compile error, matching the server, which rejects it rather than silently preferring one.
+ * `PostApiSendMessageBody` has `text` and `documentUrl` as independent optional fields, so the
+ * endpoint accepts the pair — the SDK's union is a stricter opinion than the API rather than a
+ * restriction it enforces. Kept because narrowing to match would silently drop the caption from
+ * every PDF the bot sends, which is a behaviour change disguised as a refactor.
  */
-export type SendMessageInput = { to: string; mentions?: string[] } & (
-  | { text: string }
-  | { imageUrl: string; text?: string }
-  | { videoUrl: string; text?: string }
-  | { audioUrl: string }
-  // `fileName` is optional server-side; required here because a document without one
-  // arrives named after its URL, which is never what anyone wants.
-  | { documentUrl: string; fileName: string; text?: string }
-  | { stickerUrl: string }
-  | { poll: { question: string; options: string[]; multiSelect?: boolean } }
-  | { location: { latitude: number; longitude: number; name?: string; address?: string } }
-);
-
-/**
- * Identifies one message. `remoteJid` is the chat, so reacting inside a group addresses the
- * group; `fromMe` and `participant` say whose message it was.
- */
-export type MessageKey = {
-  id: string;
-  remoteJid: string;
-  fromMe?: boolean;
-  participant?: string;
-};
+export type SendMessageInput =
+  | SdkSendMessageInput
+  | {
+      to: string;
+      mentions?: string[];
+      documentUrl: string;
+      fileName: string;
+      text?: string;
+    };
 
 /** The WhatsApp identity behind the session key. `id` is a JID, `lid` the newer LID form. */
 export type WapiUser = { id: string; name: string | null; lid: string | null };
@@ -108,34 +85,26 @@ const IDENTITY_TTL_MS = 60 * 60 * 1000;
 let cachedUser: { user: WapiUser; at: number } | undefined;
 
 export const wapi = {
-  /** Bare `{status}` — this one has no `success` key at all. */
-  async status(): Promise<string> {
-    return (await request("/api/status"))["status"] as string;
+  /** Connection state of the session this key belongs to. Lowercase, unlike `connect`. */
+  status(): Promise<string> {
+    return client().status();
   },
 
   /**
    * Reconnect a session from its stored credentials.
    *
-   * Takes the **Personal Access Token**, not the session key — this is a session-admin route,
-   * and passing the session key returns 403 rather than 401. Asynchronous: it answers with a
-   * status right away, and `NEED_SCAN` means the stored credentials are gone and a human has to
-   * scan a QR. Note the status is SCREAMING_CASE here and lowercase from `/api/status`.
+   * Asynchronous: it answers with a status right away, and `NEED_SCAN` means the credentials
+   * are gone and a human has to scan a QR. The status is SCREAMING_CASE here and lowercase from
+   * `status()` — an inherited inconsistency, not a bug.
    */
-  async connect(
+  connect(
     sessionId: string | number,
   ): Promise<{ status: string; qrCode?: string; message?: string }> {
-    const pat = config.wapiPatOptional();
-    if (!pat) throw new WapiError(0, "WAPI_PAT is not set");
-    const body = await request(`/api/whatsapp-sessions/${sessionId}/connect`, {
-      method: "POST",
-      body: JSON.stringify({}),
-      headers: { Authorization: `Bearer ${pat}` },
-    });
-    return unwrap(body);
+    return admin().sessions.connection.connect(Number(sessionId));
   },
 
-  async me(): Promise<WapiUser> {
-    return unwrap<WapiUser>(await request("/api/user"));
+  me(): Promise<WapiUser> {
+    return client().user();
   },
 
   /**
@@ -153,45 +122,29 @@ export const wapi = {
     return user;
   },
 
-  async sendText(
+  sendText(
     to: string,
     text: string,
     opts: { mentions?: string[] } = {},
   ): Promise<SendResult> {
-    return unwrap<SendResult>(
-      await request("/api/send-message", {
-        method: "POST",
-        body: JSON.stringify({ to, text, ...opts }),
-      }),
-    );
+    return client().messages.send({ to, text, ...opts });
   },
 
   /** The general form. `sendText` is the common case; this covers media, polls and locations. */
-  async send(input: SendMessageInput): Promise<SendResult> {
-    return unwrap<SendResult>(
-      await request("/api/send-message", {
-        method: "POST",
-        body: JSON.stringify(input),
-      }),
-    );
+  send(input: SendMessageInput): Promise<SendResult> {
+    return client().messages.send(input as SdkSendMessageInput);
   },
 
   /**
-   * Upload bytes and get a permanent URL to pass back to `send`.
-   *
-   * `publicUrl` sits at the top level, not under `data`. The link does not expire, which is
-   * what makes it usable as a send input afterwards.
+   * Upload bytes and get a permanent URL to pass back to `send`. The link does not expire,
+   * which is what makes it usable as a send input afterwards.
    */
-  async upload(file: {
+  upload(file: {
     base64: string;
     mimetype: string;
     fileName?: string;
   }): Promise<string> {
-    const body = await request("/api/upload", {
-      method: "POST",
-      body: JSON.stringify(file),
-    });
-    return body["publicUrl"] as string;
+    return client().messages.media.upload(file);
   },
 
   /**
@@ -202,38 +155,27 @@ export const wapi = {
    * from the webhook. **The returned URL expires after an hour**, so anything worth keeping
    * must be fetched and re-uploaded rather than stored as-is.
    */
-  async decryptMedia(message: Record<string, unknown>): Promise<string> {
-    const body = await request("/api/decrypt-media", {
-      method: "POST",
-      body: JSON.stringify({ data: { messages: { message } } }),
-    });
-    return body["publicUrl"] as string;
+  decryptMedia(message: Record<string, unknown>): Promise<string> {
+    return client().messages.media.decrypt(message);
   },
 
   /**
    * React to a message, or clear the reaction with an empty string.
    *
    * Takes the WhatsApp `key`, not a `msgId`: you mostly react to messages someone *else* sent,
-   * and those have no `msgId` — that number is assigned by wapi when *it* sends something. The
-   * key comes straight off the webhook payload.
+   * and those have no `msgId` — that number is assigned by wapi when *it* sends something.
    */
-  async react(
-    key: MessageKey,
+  react(
+    key: Parameters<WapiClient["messages"]["react"]>[0],
     emoji: string,
   ): Promise<{ id: string | null; emoji: string }> {
-    return unwrap<{ id: string | null; emoji: string }>(
-      await request("/api/messages/react", {
-        method: "POST",
-        body: JSON.stringify({ key, emoji }),
-      }),
-    );
+    return client().messages.react(key, emoji);
   },
 
   /** Blue ticks. Best-effort — a failure here must never stop a reply. */
-  async markRead(key: Record<string, unknown>): Promise<void> {
-    await request("/api/messages/read", {
-      method: "POST",
-      body: JSON.stringify({ key }),
-    });
+  async markRead(
+    key: Parameters<WapiClient["messages"]["markRead"]>[0],
+  ): Promise<void> {
+    await client().messages.markRead(key);
   },
 };

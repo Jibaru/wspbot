@@ -10,6 +10,8 @@
     "typecheck": "tsc --noEmit",
     "smoke": "tsx scripts/smoke.ts",
     "features-check": "tsx --conditions=react-server scripts/features-check.mts",
+    "wapi-check": "tsx --conditions=react-server --env-file=.env scripts/wapi-check.mts",
+    "vendor-wapi-sdk": "node scripts/vendor-wapi-sdk.mjs",
     "sticker-check": "tsx --conditions=react-server scripts/sticker-check.mts",
     "voice-check": "tsx --conditions=react-server scripts/voice-check.mts",
     "draw-check": "tsx --conditions=react-server scripts/draw-check.mts",

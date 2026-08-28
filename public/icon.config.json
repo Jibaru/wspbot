@@ -7,10 +7,10 @@
   "name": "wspbot",
   "shortName": "wspbot",
   "face": "serif-italic",
-  "bg": "#1f7a4d",
-  "fg": "#fbfbfa",
-  "bgDark": "#161613",
-  "fgDark": "#52c48a",
+  "bg": "#0d0d0d",
+  "fg": "#ffc107",
+  "bgDark": "#ffc107",
+  "fgDark": "#0d0d0d",
   "radius": 6,
   "scale": 0.58,
   "padding": 3,
@@ -18,5 +18,5 @@
   "recolor": true,
   "darkRasters": false,
   "svgOnly": false,
-  "themeColor": "#1f7a4d"
+  "themeColor": "#0d0d0d"
 }

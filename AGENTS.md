@@ -181,11 +181,18 @@ like a simplification opportunity.
 - **`ADMIN_PASSWORD_HASH` is base64, not the raw hash.** Docker Compose interpolates `$NAME` in
   env values, and a bcrypt hash is full of `$`. A raw hash arrives as `$2b$12` and every sign-in
   fails as "wrong password". `lib/config.ts` checks the shape and refuses a mangled one loudly.
+- **One theme, not two.** `app/globals.css` used to carry a light palette and a dark one behind
+  `prefers-color-scheme`. It is now the brand's obsidian resting state only, shared with the
+  landing page, so the dashboard and the front door are the same product. `color-scheme: dark`
+  is set so form controls follow.
 - **A colour set on a class can lose to the link reset.** `.lp a` is specificity (0,1,1) and
   beats a bare `.lp-btn` at (0,1,0), so the primary button kept its gold background and
   inherited near-white text — 1.4:1, unreadable, with correct-looking CSS three lines below.
   Anything with a background states its colour at `.lp a.<class>`. `npm run contrast-check`
-  resolves the cascade and measures it, because reading the file is what missed it twice.
+  resolves the cascade and measures it, because reading the file is what missed it twice. It
+  covers both stylesheets, and it honours `:not()` — stripping it made
+  `.panel button[type="submit"]:not(.linky)` match a `.linky` button and report the wrong
+  colour, which is a resolver that passes while lying.
 - **The Crafter Station mark is reproduced, never redrawn.** `app/crafter-mark.tsx` carries the
   real path from brand.crafter.run; the brand's forbidden list ends with "replace with similar
   marks". Each instance needs a unique gradient id, which is why callers pass one.

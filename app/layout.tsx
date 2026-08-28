@@ -1,5 +1,13 @@
 import type { Metadata, Viewport } from "next";
+import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+
+/**
+ * Geist, the brand's typeface: Sans for prose, Mono for labels and data. Loaded once here rather
+ * than per page, so the dashboard and the landing share one copy and one set of variables.
+ */
+const geist = Geist({ subsets: ["latin"], variable: "--font-geist" });
+const geistMono = Geist_Mono({ subsets: ["latin"], variable: "--font-geist-mono" });
 
 /**
  * The icon set in `public/` is generated, not drawn by hand — regenerate it with
@@ -32,17 +40,14 @@ export const metadata: Metadata = {
 
 /** `themeColor` lives here, not in `metadata` — deprecated there since Next 14. */
 export const viewport: Viewport = {
-  themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#1f7a4d" },
-    { media: "(prefers-color-scheme: dark)", color: "#161613" },
-  ],
+  themeColor: "#0d0d0d",
 };
 
 export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en">
+    <html lang="en" className={`${geist.variable} ${geistMono.variable}`}>
       <body>{children}</body>
     </html>
   );

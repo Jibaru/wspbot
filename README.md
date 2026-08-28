@@ -58,6 +58,10 @@ same rot in a nicer typeface.
 
 ## The dashboard
 
+Same look as the landing page — forged gold on obsidian, Geist throughout — because it is the
+same product. There is one theme rather than a light and a dark: the brand's resting state is
+obsidian, and a dashboard read beside the front door is better off matching it.
+
 Seven sections under `/dashboard`, each behind the sign-in:
 
 | | |

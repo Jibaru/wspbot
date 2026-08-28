@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Geist, Geist_Mono } from "next/font/google";
 import { FEATURES, ALWAYS } from "@/lib/features";
 import { CrafterMark, CrafterLockup } from "./crafter-mark";
 import "./landing.css";
@@ -18,9 +17,6 @@ import "./landing.css";
  * registry already exists to stop this exact list rotting in three places at once; a landing page
  * quietly advertising an ability that was removed is the same bug wearing a nicer typeface.
  */
-
-const geist = Geist({ subsets: ["latin"], variable: "--font-geist" });
-const geistMono = Geist_Mono({ subsets: ["latin"], variable: "--font-geist-mono" });
 
 export const metadata: Metadata = {
   title: "wspbot — tag it, it answers",
@@ -89,7 +85,7 @@ const STEPS: { title: string; body: string }[] = [
 
 export default function Landing() {
   return (
-    <div className={`lp ${geist.variable} ${geistMono.variable}`}>
+    <div className="lp">
       <div className="lp-wrap">
         <header className="lp-nav">
           <span className="lp-mark">

@@ -12,6 +12,6 @@ export async function forgetMemory(formData: FormData): Promise<void> {
   if (!id) return;
 
   await memory.remove(id);
-  revalidatePath("/memory");
-  revalidatePath("/");
+  revalidatePath("/dashboard/memory");
+  revalidatePath("/dashboard");
 }

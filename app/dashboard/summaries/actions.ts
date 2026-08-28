@@ -35,7 +35,7 @@ export async function createSchedule(formData: FormData): Promise<void> {
   });
 
   summaries.forgetSources();
-  revalidatePath("/summaries");
+  revalidatePath("/dashboard/summaries");
 }
 
 export async function toggleSchedule(formData: FormData): Promise<void> {
@@ -45,7 +45,7 @@ export async function toggleSchedule(formData: FormData): Promise<void> {
 
   await summaries.setEnabled(id, on);
   summaries.forgetSources();
-  revalidatePath("/summaries");
+  revalidatePath("/dashboard/summaries");
 }
 
 export async function deleteSchedule(formData: FormData): Promise<void> {
@@ -54,5 +54,5 @@ export async function deleteSchedule(formData: FormData): Promise<void> {
 
   await summaries.remove(id);
   summaries.forgetSources();
-  revalidatePath("/summaries");
+  revalidatePath("/dashboard/summaries");
 }

@@ -62,8 +62,10 @@ lib/usage.ts                     token accounting, cost estimate
 proxy.ts                         gates every page (Next 16 renamed middleware -> proxy)
 lib/auth.ts                      bcrypt at sign-in, signed cookie thereafter
 app/login/                       sign-in page and its server action
-app/(dash)/                      one route per section, each with its own actions.ts
-app/(dash)/layout.tsx            shell + nav; nav.tsx is the only client component
+app/page.tsx                     the public landing page (the only ungated route)
+app/landing.css                  its brand styles, scoped under .lp
+app/dashboard/                   one route per section, each with its own actions.ts
+app/dashboard/layout.tsx         shell + nav; nav.tsx is the only client component
 public/                          generated icon set; rebuild from public/icon.config.json
 ```
 
@@ -178,6 +180,10 @@ like a simplification opportunity.
 - **`ADMIN_PASSWORD_HASH` is base64, not the raw hash.** Docker Compose interpolates `$NAME` in
   env values, and a bcrypt hash is full of `$`. A raw hash arrives as `$2b$12` and every sign-in
   fails as "wrong password". `lib/config.ts` checks the shape and refuses a mangled one loudly.
+- **The landing page is the only ungated route, and it is excluded by `$`, not by an
+  allowlist.** The matcher still gates everything by default and names the exceptions, so a page
+  added tomorrow is behind the sign-in unless somebody deliberately opens it. Inverting that to
+  "gate `/dashboard`" would make the default open, which is the wrong way round for a gate.
 - **The `proxy.ts` matcher must keep excluding `/api/` and anything with a file extension.**
   wapi calls the webhook and Notion the OAuth callback; neither carries a session cookie, so
   gating them stops the bot receiving messages — quietly, since the dashboard would still look

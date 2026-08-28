@@ -14,7 +14,7 @@ export async function renameSticker(formData: FormData): Promise<void> {
   if (!id || !label) return;
 
   await stickers.rename(id, label);
-  revalidatePath("/stickers");
+  revalidatePath("/dashboard/stickers");
 }
 
 /**
@@ -26,6 +26,6 @@ export async function deleteSticker(formData: FormData): Promise<void> {
   if (!id) return;
 
   await stickers.remove(id);
-  revalidatePath("/stickers");
-  revalidatePath("/");
+  revalidatePath("/dashboard/stickers");
+  revalidatePath("/dashboard");
 }

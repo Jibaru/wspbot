@@ -1,0 +1,602 @@
+/*
+ * The public landing page.
+ *
+ * Crafter Station's brand system, applied: forged gold as the *only* accent, obsidian and
+ * titanium as the resting state, Geist for prose and Geist Mono for labels and data.
+ *
+ * The motion rule is theirs and it is a real constraint: **motion reveals state, never
+ * decorates.** So the hero staging reveals a conversation the way it actually happens — one
+ * message at a time, the bot answering after them — and the only thing that moves forever is the
+ * status dot, because that is a live fact rather than an effect. Nothing floats, drifts or
+ * parallaxes. Easings and durations are the brand's own tokens.
+ *
+ * Scoped under `.lp` so none of it can reach the dashboard, which keeps its own quieter palette.
+ */
+
+.lp {
+  /* Forged gold. The only accent, per the brand system. */
+  --gold: #ffc107;
+  --gold-lift: #ffd435;
+  --gold-deep: #c68b05;
+
+  /* Obsidian and titanium: the resting state. */
+  --obsidian: #0d0d0d;
+  --titanium: #141414;
+  --surface: #1f1f1f;
+  --edge: #2a2a2a;
+
+  --ink: #f2f1ee;
+  --muted: #8f8d88;
+
+  /* The brand's easing and duration scales, verbatim. */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-back: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --t1: 120ms;
+  --t2: 200ms;
+  --t3: 320ms;
+  --t4: 520ms;
+  --t5: 800ms;
+
+  font-family: var(--font-geist), ui-sans-serif, system-ui, sans-serif;
+  background: var(--obsidian);
+  color: var(--ink);
+  min-height: 100dvh;
+  overflow-x: hidden;
+  letter-spacing: -0.005em;
+  line-height: 1.6;
+}
+
+.lp ::selection {
+  background: var(--gold);
+  color: var(--obsidian);
+}
+
+.lp a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.lp-wrap {
+  width: min(72rem, 100% - 3rem);
+  margin-inline: auto;
+}
+
+/* ── the mark ────────────────────────────────────────────────────────── */
+
+/* The dot is always forged gold — the one rule the wordmark carries everywhere. */
+.lp-dot {
+  color: var(--gold);
+}
+
+.lp-mark {
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  font-size: 1.05rem;
+}
+
+/* ── nav ─────────────────────────────────────────────────────────────── */
+
+.lp-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.4rem 0;
+  gap: 1rem;
+}
+
+.lp-nav nav {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  font-size: 0.9rem;
+}
+
+.lp-nav nav a {
+  color: var(--muted);
+  transition: color var(--t2) var(--ease-out);
+}
+
+.lp-nav nav a:hover {
+  color: var(--ink);
+}
+
+.lp-nav .lp-signin {
+  color: var(--ink);
+  border: 1px solid var(--edge);
+  border-radius: 999px;
+  padding: 0.4rem 0.95rem;
+  transition:
+    border-color var(--t2) var(--ease-out),
+    color var(--t2) var(--ease-out);
+}
+
+.lp-nav .lp-signin:hover {
+  border-color: var(--gold);
+  color: var(--gold);
+}
+
+/* ── hero ────────────────────────────────────────────────────────────── */
+
+.lp-hero {
+  position: relative;
+  display: grid;
+  gap: 3.5rem;
+  padding: 4rem 0 5rem;
+  align-items: center;
+}
+
+@media (min-width: 62rem) {
+  .lp-hero {
+    grid-template-columns: 1.05fr 0.95fr;
+    gap: 4rem;
+    padding: 6rem 0 7rem;
+  }
+}
+
+/*
+ * Atmosphere, deliberately still: a single gold bloom behind the headline and a titanium dot
+ * grid. Neither animates — the brand's motion rule means light that drifts for its own sake is
+ * exactly what not to do.
+ */
+.lp-hero::before {
+  content: "";
+  position: absolute;
+  inset: -30% -20% auto -30%;
+  height: 42rem;
+  background: radial-gradient(
+    45% 45% at 30% 40%,
+    color-mix(in srgb, var(--gold) 13%, transparent),
+    transparent 70%
+  );
+  pointer-events: none;
+  z-index: 0;
+}
+
+.lp-hero > * {
+  position: relative;
+  z-index: 1;
+}
+
+.lp-eyebrow {
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 0.75rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--gold);
+  margin: 0 0 1.4rem;
+}
+
+/* Display: the brand's own scale — clamp(48px, 8vw, 96px), w700, -0.04em, lh 0.92. */
+.lp-display {
+  font-size: clamp(2.9rem, 8vw, 6rem);
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  line-height: 0.92;
+  margin: 0 0 1.5rem;
+}
+
+.lp-sub {
+  font-size: 1.075rem;
+  color: var(--muted);
+  max-width: 34rem;
+  margin: 0 0 2.2rem;
+}
+
+.lp-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-bottom: 2rem;
+}
+
+.lp-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 600;
+  font-size: 0.95rem;
+  padding: 0.7rem 1.3rem;
+  border-radius: 999px;
+  background: var(--gold);
+  color: var(--obsidian);
+  border: 1px solid var(--gold);
+  transition:
+    transform var(--t2) var(--ease-back),
+    background var(--t2) var(--ease-out),
+    box-shadow var(--t3) var(--ease-out);
+}
+
+.lp-btn:hover {
+  background: var(--gold-lift);
+  transform: translateY(-2px);
+  box-shadow: 0 10px 30px -12px color-mix(in srgb, var(--gold) 60%, transparent);
+}
+
+.lp-btn.ghost {
+  background: transparent;
+  color: var(--ink);
+  border-color: var(--edge);
+  box-shadow: none;
+}
+
+.lp-btn.ghost:hover {
+  border-color: var(--gold);
+  color: var(--gold);
+  transform: translateY(-2px);
+}
+
+.lp-status {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 0.78rem;
+  color: var(--muted);
+  margin: 0;
+}
+
+/* The one thing that moves forever, because it is reporting a live fact rather than decorating. */
+.lp-pulse {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--gold);
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--gold) 70%, transparent);
+  animation: lp-pulse 2.4s var(--ease-in-out) infinite;
+}
+
+@keyframes lp-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--gold) 55%, transparent);
+  }
+  60% {
+    box-shadow: 0 0 0 7px transparent;
+  }
+}
+
+/* ── the conversation ────────────────────────────────────────────────── */
+
+.lp-thread {
+  background: linear-gradient(180deg, var(--titanium), var(--obsidian));
+  border: 1px solid var(--edge);
+  border-radius: 20px;
+  padding: 1.1rem;
+  display: grid;
+  gap: 0.55rem;
+  box-shadow: 0 40px 80px -50px rgb(0 0 0 / 0.9);
+}
+
+.lp-thread-head {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.15rem 0.35rem 0.75rem;
+  border-bottom: 1px solid var(--edge);
+  margin-bottom: 0.35rem;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.lp-avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--gold);
+  color: var(--obsidian);
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  font-size: 0.72rem;
+}
+
+.lp-msg {
+  max-width: 88%;
+  padding: 0.55rem 0.8rem;
+  border-radius: 14px;
+  font-size: 0.9rem;
+  line-height: 1.45;
+  background: var(--surface);
+  border: 1px solid var(--edge);
+  justify-self: start;
+  border-bottom-left-radius: 5px;
+}
+
+.lp-msg .who {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--muted);
+  margin-bottom: 0.15rem;
+}
+
+/* The bot's own messages carry the accent, which is how you read who is speaking at a glance. */
+.lp-msg.bot {
+  justify-self: end;
+  background: color-mix(in srgb, var(--gold) 14%, var(--surface));
+  border-color: color-mix(in srgb, var(--gold) 32%, var(--edge));
+  border-bottom-left-radius: 14px;
+  border-bottom-right-radius: 5px;
+}
+
+.lp-msg .tag {
+  color: var(--gold);
+  font-weight: 600;
+}
+
+.lp-msg.digest {
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 0.78rem;
+  line-height: 1.6;
+  max-width: 100%;
+  justify-self: stretch;
+  border-bottom-left-radius: 14px;
+}
+
+.lp-msg.digest b {
+  color: var(--gold);
+  font-weight: 600;
+}
+
+/*
+ * Staged, once. The conversation arrives in the order it would really happen, which is the
+ * product demonstrating itself rather than an effect playing.
+ */
+.lp-msg {
+  animation: lp-arrive var(--t4) var(--ease-out) both;
+  animation-delay: calc(320ms + var(--i, 0) * 420ms);
+}
+
+@keyframes lp-arrive {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.lp-hero-copy > * {
+  animation: lp-rise var(--t4) var(--ease-out) both;
+  animation-delay: calc(var(--i, 0) * 90ms);
+}
+
+@keyframes lp-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ── sections ────────────────────────────────────────────────────────── */
+
+.lp-section {
+  padding: 5rem 0;
+  border-top: 1px solid var(--edge);
+}
+
+.lp-kicker {
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--gold);
+  margin: 0 0 0.9rem;
+}
+
+/* H2: clamp(28px, 3.5vw, 40px), w600, -0.025em, lh 1.1. */
+.lp-h2 {
+  font-size: clamp(1.75rem, 3.5vw, 2.5rem);
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  line-height: 1.1;
+  margin: 0 0 1rem;
+  max-width: 28ch;
+}
+
+.lp-lead {
+  color: var(--muted);
+  max-width: 46ch;
+  margin: 0 0 2.5rem;
+}
+
+.lp-grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 1px;
+  background: var(--edge);
+  border: 1px solid var(--edge);
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+@media (min-width: 40rem) {
+  .lp-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (min-width: 62rem) {
+  .lp-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+.lp-grid li {
+  background: var(--titanium);
+  padding: 1.35rem 1.4rem;
+  display: grid;
+  gap: 0.35rem;
+  align-content: start;
+  transition: background var(--t2) var(--ease-out);
+}
+
+.lp-grid li:hover {
+  background: var(--surface);
+}
+
+.lp-grid h3 {
+  font-size: 0.98rem;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  margin: 0;
+}
+
+.lp-grid p {
+  margin: 0;
+  font-size: 0.88rem;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+/* Marks the handful that are on unless somebody turns them off. */
+.lp-grid li.core h3::after {
+  content: "always on";
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 0.6rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--gold);
+  border: 1px solid color-mix(in srgb, var(--gold) 40%, transparent);
+  border-radius: 999px;
+  padding: 0.1rem 0.45rem;
+  margin-left: 0.5rem;
+  vertical-align: 0.12em;
+  white-space: nowrap;
+}
+
+/* ── how it works ────────────────────────────────────────────────────── */
+
+.lp-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 1.5rem;
+  counter-reset: step;
+}
+
+@media (min-width: 52rem) {
+  .lp-steps {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 2.5rem;
+  }
+}
+
+.lp-steps li {
+  counter-increment: step;
+  display: grid;
+  gap: 0.4rem;
+  align-content: start;
+  padding-top: 1.2rem;
+  border-top: 2px solid var(--edge);
+  transition: border-color var(--t3) var(--ease-out);
+}
+
+.lp-steps li:hover {
+  border-top-color: var(--gold);
+}
+
+.lp-steps li::before {
+  content: counter(step, decimal-leading-zero);
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.1em;
+  color: var(--gold);
+}
+
+.lp-steps h3 {
+  font-size: 1.05rem;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  margin: 0;
+}
+
+.lp-steps p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.lp-pipeline {
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 0.78rem;
+  color: var(--muted);
+  background: var(--titanium);
+  border: 1px solid var(--edge);
+  border-radius: 12px;
+  padding: 1rem 1.15rem;
+  margin-top: 2.5rem;
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.lp-pipeline b {
+  color: var(--gold);
+  font-weight: 500;
+}
+
+/* ── footer ──────────────────────────────────────────────────────────── */
+
+.lp-footer {
+  border-top: 1px solid var(--edge);
+  padding: 2.5rem 0 3.5rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem 2rem;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.lp-footer a {
+  color: var(--ink);
+  border-bottom: 1px solid transparent;
+  transition: border-color var(--t2) var(--ease-out);
+}
+
+.lp-footer a:hover {
+  border-bottom-color: var(--gold);
+}
+
+/*
+ * Scroll reveal without JavaScript. Where `view()` is unsupported the content is simply there,
+ * which is the correct fallback for a page whose job is to be read.
+ */
+@supports (animation-timeline: view()) {
+  @media (prefers-reduced-motion: no-preference) {
+    .lp-reveal {
+      animation: lp-rise linear both;
+      animation-timeline: view();
+      animation-range: entry 5% cover 22%;
+    }
+  }
+}
+
+/*
+ * Someone who has asked for less motion gets none of it: every staged element is simply present.
+ * The status dot stops too — a pulsing light is exactly what that setting is about.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .lp *,
+  .lp *::before,
+  .lp *::after {
+    animation: none !important;
+    transition-duration: 1ms !important;
+  }
+  .lp-msg,
+  .lp-hero-copy > * {
+    opacity: 1;
+    transform: none;
+  }
+}

@@ -13,6 +13,6 @@ export async function cancelReminder(formData: FormData): Promise<void> {
   if (!chat || !userId) return;
 
   await reminders.cancel(chat, userId);
-  revalidatePath("/reminders");
-  revalidatePath("/");
+  revalidatePath("/dashboard/reminders");
+  revalidatePath("/dashboard");
 }

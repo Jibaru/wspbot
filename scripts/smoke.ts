@@ -388,14 +388,27 @@ console.log("\nOAuth state (which chat a Notion connection belongs to):");
 {
   console.log("\nproxy matcher:");
   const source = readFileSync(new URL("../proxy.ts", import.meta.url), "utf8");
-  const line = source.split(/\r?\n/).find((l) => l.includes("(?!login"));
+  // Found by shape rather than by its contents, so reordering the exclusions inside the pattern
+  // cannot quietly turn this whole check into a no-op.
+  const line = source.split(/\r?\n/).find((l) => l.includes('"/((?!'));
   const pattern: string = eval(line!.trim().replace(/,$/, ""));
   const gates = (path: string): boolean => new RegExp(`^${pattern}$`).test(path);
 
   // Pages: every one of these must be behind the sign-in.
-  for (const path of ["/", "/features", "/limits", "/stickers", "/memory", "/reminders", "/usage", "/summaries"]) {
+  for (const path of [
+    "/dashboard",
+    "/dashboard/features",
+    "/dashboard/limits",
+    "/dashboard/stickers",
+    "/dashboard/memory",
+    "/dashboard/reminders",
+    "/dashboard/usage",
+    "/dashboard/summaries",
+  ]) {
     check(`gates ${path}`, gates(path), true);
   }
+  // The landing page is the one page deliberately open, and the only one.
+  check("leaves the landing page open", gates("/"), false);
   // Called by wapi and by Notion with no cookie; gating either breaks the bot silently.
   check("leaves /api/wapi/webhook open", gates("/api/wapi/webhook"), false);
   check("leaves /api/notion/callback open", gates("/api/notion/callback"), false);

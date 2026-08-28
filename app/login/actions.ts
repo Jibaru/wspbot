@@ -29,7 +29,7 @@ export async function signIn(
 ): Promise<{ error?: string }> {
   const username = String(formData.get("username") ?? "").trim();
   const password = String(formData.get("password") ?? "");
-  const next = String(formData.get("next") ?? "/");
+  const next = String(formData.get("next") ?? "/dashboard");
 
   const admin = config.admin();
   if (!admin) {
@@ -55,7 +55,7 @@ export async function signIn(
   });
 
   // Only ever within this site: an open redirect would turn sign-in into a phishing vector.
-  redirect(next.startsWith("/") && !next.startsWith("//") ? next : "/");
+  redirect(next.startsWith("/") && !next.startsWith("//") ? next : "/dashboard");
 }
 
 export async function signOut(): Promise<void> {

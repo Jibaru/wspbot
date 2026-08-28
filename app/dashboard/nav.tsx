@@ -11,14 +11,14 @@ import { usePathname } from "next/navigation";
  */
 
 const SECTIONS: { href: string; label: string }[] = [
-  { href: "/", label: "Overview" },
-  { href: "/features", label: "Features" },
-  { href: "/limits", label: "Rate limits" },
-  { href: "/stickers", label: "Stickers" },
-  { href: "/memory", label: "Memory" },
-  { href: "/reminders", label: "Reminders" },
-  { href: "/summaries", label: "Summaries" },
-  { href: "/usage", label: "Usage" },
+  { href: "/dashboard", label: "Overview" },
+  { href: "/dashboard/features", label: "Features" },
+  { href: "/dashboard/limits", label: "Rate limits" },
+  { href: "/dashboard/stickers", label: "Stickers" },
+  { href: "/dashboard/memory", label: "Memory" },
+  { href: "/dashboard/reminders", label: "Reminders" },
+  { href: "/dashboard/summaries", label: "Summaries" },
+  { href: "/dashboard/usage", label: "Usage" },
 ];
 
 export function Nav() {
@@ -28,7 +28,8 @@ export function Nav() {
     <nav className="sections">
       {SECTIONS.map((s) => {
         // Exact for the overview, prefix for the rest, so a nested page keeps its tab lit.
-        const active = s.href === "/" ? pathname === "/" : pathname.startsWith(s.href);
+        const active =
+          s.href === "/dashboard" ? pathname === "/dashboard" : pathname.startsWith(s.href);
         return (
           <Link
             key={s.href}

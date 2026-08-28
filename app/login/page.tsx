@@ -59,7 +59,7 @@ export default async function LoginPage({
           required
         />
 
-        <input type="hidden" name="next" value={next ?? "/"} />
+        <input type="hidden" name="next" value={next ?? "/dashboard"} />
 
         {/* One message for either mistake, so the form cannot be used to find valid usernames. */}
         {failed && <p className="bad">Wrong username or password.</p>}

@@ -31,22 +31,40 @@ That single fact shapes the app: there is nothing to poll, so the whole thing ha
 handler that has to be publicly reachable. Which is exactly what deploying gives you.
 
 Two halves that share almost nothing. `/api/wapi/webhook` takes messages and answers them. The
-rest is a dashboard, behind a sign-in, that configures what the bot is allowed to do — and the
-only thing passing between them is a table of switches.
+rest is a dashboard under `/dashboard`, behind a sign-in, that configures what the bot is allowed
+to do — and the only thing passing between them is a table of switches. `/` is a public landing
+page and the only route deliberately left open.
+
+## The landing page
+
+`/` is public, and the only page that is. It is built to
+[Crafter Station's brand system](https://brand.crafter.run): forged gold as the sole accent,
+obsidian and titanium at rest, Geist throughout.
+
+Their motion rule — *motion reveals state, never decorates* — is treated as a constraint rather
+than a slogan. The hero stages a conversation the way one actually happens, a message at a time
+with the bot answering after; nothing floats or parallaxes; and the only thing that keeps moving
+is the status dot, because it reports something true. It is all CSS, so it works with JavaScript
+off, and `prefers-reduced-motion` turns the whole thing off including the dot.
+
+The capability grid is read from `lib/features.ts` rather than written out again, for the same
+reason `lib/about.ts` is: a landing page quietly advertising an ability that was removed is the
+same rot in a nicer typeface.
 
 ## The dashboard
 
-Seven sections, each at its own URL and each behind the sign-in:
+Seven sections under `/dashboard`, each behind the sign-in:
 
 | | |
 | --- | --- |
-| `/` | Session, counts, spend |
-| `/features` | Switch abilities on and off |
-| `/limits` | Per-person rate limits |
-| `/stickers` | The shared library — rename, delete |
-| `/memory` | What it has been told to remember |
-| `/reminders` | Everything scheduled, across every chat |
-| `/usage` | Tokens and spend, broken down by model and kind |
+| `/dashboard` | Session, counts, spend |
+| `/dashboard/features` | Switch abilities on and off |
+| `/dashboard/limits` | Per-person rate limits |
+| `/dashboard/stickers` | The shared library — rename, delete |
+| `/dashboard/memory` | What it has been told to remember |
+| `/dashboard/reminders` | Everything scheduled, across every chat |
+| `/dashboard/summaries` | Scheduled digests of a group |
+| `/dashboard/usage` | Tokens and spend, broken down by model and kind |
 
 **A switch is real, not cosmetic.** Turning something off withdraws its tools *and* deletes the
 part of the system prompt that describes them, on the very next message — no deploy, no restart,
@@ -443,7 +461,7 @@ for one signature and three REST calls.
 ## Scheduled summaries
 
 Point the bot at a group, give it a cron pattern and a destination, and it posts a digest of what
-was said. Set up on `/summaries`, never from a chat.
+was said. Set up on `/dashboard/summaries`, never from a chat.
 
 ```
 Equipo Deploy  →  Resúmenes        0 9 * * *        next 29 Aug 09:00
@@ -621,7 +639,7 @@ insert into memories (chat, text) values ('global', 'the office wifi password is
 | `BOT_REPLY_TO_DMS` | `false` | Answer one-to-one chats too. Groups always require a tag regardless. |
 | `BOT_TIMEZONE` | `UTC` | What "9am" means. Reminders and summary schedules are wrong without it. |
 | `BOT_SUMMARY_MODEL` | `gpt-5.6-sol` | Writes the scheduled digests. Worth the top tier: it runs rarely, on a long transcript, and a digest that drops the decision is worse than none. |
-| `BOT_RATE_LIMIT_PER_MINUTE` | `1` | Default allowance per person. Override individuals on `/limits`. |
+| `BOT_RATE_LIMIT_PER_MINUTE` | `1` | Default allowance per person. Override individuals on `/dashboard/limits`. |
 
 Replies are requested at low verbosity — a WhatsApp message that needs scrolling has already
 failed. The bot's manners live in the system prompt in `lib/agent.ts`.
@@ -728,7 +746,8 @@ lib/usage.ts                     token accounting and the cost estimate
 proxy.ts                         gates every dashboard page in one place
 lib/auth.ts                      bcrypt at sign-in, a signed cookie thereafter
 app/login/                       the sign-in page and its server action
-app/(dash)/                      the dashboard, one route per section
+app/page.tsx                     the public landing page; app/landing.css its brand styles
+app/dashboard/                   the dashboard, one route per section
 
 lib/wapi.ts                      thin facade over the vendored SDK
 lib/wapi-sdk/                    the official wapi SDK, vendored

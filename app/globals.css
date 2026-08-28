@@ -26,15 +26,16 @@
 
 body {
   margin: 0;
-  padding: 3rem 1.5rem 5rem;
   background: var(--bg);
   color: var(--text);
   font: 15px/1.6 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 
+/* Padding sits on main, not on body: the landing page runs edge to edge and sets its own. */
 main {
   max-width: 44rem;
   margin: 0 auto;
+  padding: 3rem 1.5rem 5rem;
 }
 
 h1 {

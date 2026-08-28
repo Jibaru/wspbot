@@ -21,12 +21,12 @@ export async function saveQuota(formData: FormData): Promise<void> {
   if (!userId || !Number.isFinite(perMinute) || perMinute < 1) return;
 
   await rateLimit.setQuota(userId, Math.floor(perMinute), note || null);
-  revalidatePath("/limits");
+  revalidatePath("/dashboard/limits");
 }
 
 export async function removeQuota(formData: FormData): Promise<void> {
   const userId = String(formData.get("userId") ?? "").trim();
   if (!userId) return;
   await rateLimit.clearQuota(userId);
-  revalidatePath("/limits");
+  revalidatePath("/dashboard/limits");
 }

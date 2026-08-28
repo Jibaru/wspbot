@@ -21,8 +21,8 @@ export async function toggleFeature(formData: FormData): Promise<void> {
    * The overview counts how many are on, so it goes stale too. Nothing else needs it: the bot
    * reads the table per turn rather than from a cache.
    */
-  revalidatePath("/features");
-  revalidatePath("/");
+  revalidatePath("/dashboard/features");
+  revalidatePath("/dashboard");
 }
 
 /** Whether the deployment can actually back a feature that needs outside credentials. */

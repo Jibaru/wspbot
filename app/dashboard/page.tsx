@@ -80,7 +80,7 @@ export default async function Page() {
         <dl>
           <div className="row">
             <dt>
-              <Link href="/features">Features on</Link>
+              <Link href="/dashboard/features">Features on</Link>
             </dt>
             <dd>
               {enabled === null
@@ -90,19 +90,19 @@ export default async function Page() {
           </div>
           <div className="row">
             <dt>
-              <Link href="/stickers">Stickers</Link>
+              <Link href="/dashboard/stickers">Stickers</Link>
             </dt>
             <dd>{n?.stickers ?? "—"}</dd>
           </div>
           <div className="row">
             <dt>
-              <Link href="/memory">Remembered facts</Link>
+              <Link href="/dashboard/memory">Remembered facts</Link>
             </dt>
             <dd>{n?.memories ?? "—"}</dd>
           </div>
           <div className="row">
             <dt>
-              <Link href="/reminders">Scheduled</Link>
+              <Link href="/dashboard/reminders">Scheduled</Link>
             </dt>
             <dd>{n?.reminders ?? "—"}</dd>
           </div>
@@ -139,7 +139,7 @@ export default async function Page() {
           </dl>
         )}
         <p className="meta" style={{ marginTop: "0.6rem" }}>
-          <Link href="/usage">Full breakdown</Link>
+          <Link href="/dashboard/usage">Full breakdown</Link>
         </p>
       </div>
     </>

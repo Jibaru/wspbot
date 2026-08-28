@@ -24,15 +24,21 @@ import { SESSION_COOKIE, verifySession } from "./lib/auth";
 export const config = {
   matcher: [
     /*
-     * Everything except: the sign-in page and its action, the API routes that outside services
-     * call, Next's own assets, and any path with a file extension.
+     * Everything except: the landing page at the root, the sign-in page and its action, the
+     * API routes that outside services call, Next's own assets, and any path with a file
+     * extension.
+     *
+     * `$` is the root: the lookahead is applied to what follows the leading slash, so an empty
+     * remainder is `/` itself. Written as an exclusion rather than by gating `/dashboard`
+     * explicitly, which keeps the default closed — a page added tomorrow is behind the sign-in
+     * unless somebody deliberately opens it.
      *
      * The doubled backslash is load-bearing. `"\."` in a TypeScript string is an invalid
      * escape that collapses to a plain `"."`, turning the exclusion into "any non-empty path"
      * — which silently ungated every page but the root. `npm run smoke` asserts the behaviour
      * of this string so it cannot happen again quietly.
      */
-    "/((?!login|api/|_next/|.*\\.).*)",
+    "/((?!$|login|api/|_next/|.*\\.).*)",
   ],
 };
 
@@ -55,7 +61,7 @@ export async function proxy(request: NextRequest) {
 
   const login = new URL("/login", request.url);
   // Remembered so signing in returns you where you were headed.
-  if (request.nextUrl.pathname !== "/") {
+  if (request.nextUrl.pathname !== "/dashboard") {
     login.searchParams.set("next", request.nextUrl.pathname);
   }
   return NextResponse.redirect(login);

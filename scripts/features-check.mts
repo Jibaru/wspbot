@@ -94,6 +94,36 @@ if (inert.length) {
   bad = true;
 }
 
+/**
+ * The README opens with a table of figures — how many features, tools, tables, checks. Numbers
+ * in prose rot faster than anything else, and silently: "seven sections" survived the arrival of
+ * an eighth without a murmur. So they are computed here and looked for verbatim.
+ */
+const readme = readFileSync(new URL("../README.md", import.meta.url), "utf8");
+const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as {
+  scripts: Record<string, string>;
+};
+const db = readFileSync(new URL("../lib/db.ts", import.meta.url), "utf8");
+
+const claims: [string, string][] = [
+  [
+    "feature and tool counts",
+    `${FEATURES.length} switchable features over ${defined.size} model tools`,
+  ],
+  ["table count", `Postgres, ${(db.match(/create table if not exists/g) ?? []).length} tables`],
+  [
+    "check-script count",
+    `${Object.keys(pkg.scripts).filter((s) => s.endsWith("check") || s === "smoke").length} check scripts`,
+  ],
+];
+
+for (const [what, phrase] of claims) {
+  if (readme.includes(phrase)) continue;
+  console.error(`  FAIL README's ${what} is stale — it should read "${phrase}"`);
+  bad = true;
+}
+
 if (bad) process.exit(1);
 console.log("  every tool belongs to a feature, and every claimed tool exists");
 console.log("  every tool-less feature is read by hand somewhere");
+console.log("  the README's figures match the code");

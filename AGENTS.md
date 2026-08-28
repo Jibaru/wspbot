@@ -252,7 +252,8 @@ like a simplification opportunity.
 ```bash
 npm run smoke           # signatures, "is this for me?", what the gate covers, and whether
                         # these two files still point at things that exist
-npm run features-check  # every tool belongs to a switch, and every switch does something
+npm run features-check  # every tool belongs to a switch, every switch does something, and the
+                        # README's figures still match the code
 npm run cron-check      # the cron evaluator, including both daylight-saving transitions
 npm run contrast-check  # resolves the landing CSS cascade and measures what is readable
 npm run summary-check   # one real digest end to end: does it keep the decision, the deadline,

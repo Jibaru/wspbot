@@ -1,39 +1,140 @@
+<div align="center">
+
 # wspbot
 
-A Next.js app that puts a bot in your WhatsApp chats. Tag it and it answers — searching the web
-when the answer needs to be current, and remembering what you ask it to remember until you tell
-it to forget.
+**Tag it. It answers.**
+
+A WhatsApp bot that earns its place in a group chat. It searches when being wrong would matter,
+remembers what you tell it to, makes the sticker, keeps the list — and posts a digest of
+everything you missed.
+
+[**wspbot.crafter.run**](https://wspbot.crafter.run) · built by [Jibaru](https://jibaru.dev) of
+[Crafter Station](https://crafter.run), in Lima
+
+`Next.js 16` · `TypeScript` · `Postgres` · `OpenAI` · `ffmpeg` · self-hosted
+
+</div>
+
+---
 
 ```
-you   → @bot record that we need to create a calendar schedule
+you   → @wspbot record that we need to create a calendar schedule
 bot   → Noted.
        …days later, after a redeploy…
-you   → @bot what were we going to build?
+you   → @wspbot what were we going to build?
 bot   → A calendar schedule.
-you   → @bot forget that
+you   → @wspbot forget that
 bot   → Done.
 ```
 
-## How it works
+|  |  |
+| --- | --- |
+| **What it is** | One Next.js container: a webhook that answers WhatsApp, and a dashboard that decides what it may do |
+| **Abilities** | 18 switchable features over 32 model tools, plus 3 that are always on |
+| **Storage** | Postgres, 13 tables — memory, history, stickers, schedules, spend |
+| **Runs on** | A Dokploy VPS behind Traefik, alongside the WhatsApp gateway it talks to |
+| **Guarded by** | 12 check scripts that exercise the real thing rather than asserting about it |
 
+## Contents
+
+**Understand it** — [Architecture](#architecture) · [The life of one message](#the-life-of-one-message) · [Layout](#layout) · [Notes on the wapi integration](#notes-on-the-wapi-integration)
+
+**Run it** — [Setup](#setup) · [Pointing wapi at it](#pointing-wapi-at-it) · [Staying connected](#staying-connected) · [Tuning](#tuning) · [Checks](#checks)
+
+**Use it** — [The landing page](#the-landing-page) · [The dashboard](#the-dashboard) · [Signing in](#signing-in) · [When it replies](#when-it-replies)
+
+**What it can do** — [Put things in the chat](#what-it-can-put-in-the-chat) · [Stickers](#stickers) · [Memory](#memory) · [The checklist](#the-checklist) · [Reactions](#reactions) · [Scheduled reminders](#scheduled-reminders) · [Scheduled summaries](#scheduled-summaries) · [Notion](#notion) · [Google Sheets](#google-sheets) · [Knows what it is](#what-it-knows-about-itself)
+
+**Keep it honest** — [Rate limiting](#rate-limiting) · [Usage and cost](#usage-and-cost)
+
+## Architecture
+
+**wapi has no endpoint that lists received messages.** Inbound exists only as a webhook push, and
+that single fact shapes everything: there is nothing to poll, so the whole app hangs off one route
+handler that has to be publicly reachable — which is exactly what deploying gives you.
+
+Two halves that share almost nothing. The webhook takes messages and answers them; the dashboard
+configures what the bot is allowed to do. The only thing passing between them is a table of
+switches.
+
+```mermaid
+flowchart LR
+    WA(["WhatsApp<br/>groups"])
+    BROWSER(["Browser"])
+    OPENAI(["OpenAI<br/>model · vision · speech · images<br/>web search"])
+    EXT(["Notion · Google Sheets"])
+
+    subgraph gw["wapi · self-hosted gateway, same VPS"]
+        SESSION["session<br/>push only, never polled"]
+    end
+
+    subgraph app["wspbot · Next.js container"]
+        direction TB
+        HOOK["POST /api/wapi/webhook<br/>verify · ack · work in after"]
+        GATE["mentions<br/>is this message for me?"]
+        LIMIT["rate limit<br/>before anything costs money"]
+        REC["summary recorder<br/>untagged, recorded groups only"]
+        AGENT["agent<br/>system prompt + 32 tools"]
+        TIMERS["timers<br/>session 2m · reminders 30s · digests 1m"]
+        FEAT["features<br/>18 switches own every tool<br/>read from Postgres every turn"]
+        FF["ffmpeg<br/>stickers · voice · video"]
+        PROXY["proxy.ts<br/>gates every page but the root"]
+        PAGES["landing · /dashboard"]
+    end
+
+    PG[("Postgres<br/>13 tables")]
+
+    WA -->|"every message"| SESSION
+    SESSION -->|"signed webhook"| HOOK
+    HOOK --> GATE
+    GATE -->|"tagged"| LIMIT
+    GATE -.->|"untagged"| REC
+    LIMIT --> AGENT
+    FEAT -.->|"which tools, which prompt"| AGENT
+    AGENT --> OPENAI
+    AGENT --> FF
+    AGENT --> EXT
+    AGENT -->|"reply · media · reaction"| SESSION
+    SESSION --> WA
+
+    BROWSER --> PROXY --> PAGES
+    PAGES -->|"switches · quotas · schedules"| PG
+    AGENT <--> PG
+    REC --> PG
+    TIMERS --> AGENT
+    TIMERS -->|"reconnect · digest"| SESSION
 ```
-WhatsApp ──▶ wapi ──POST /api/wapi/webhook──▶ this app
-                                                 ├─▶ OpenAI (+ web search)
-                                                 ├─▶ ffmpeg (stickers, voice notes, video)
-                                                 ├─▶ Postgres (memory, history, settings)
-                                                 └─▶ wapi ──▶ WhatsApp
 
-you ──▶ /login ──▶ the dashboard ──▶ which abilities the bot is given
+### The life of one message
+
+The two properties worth knowing are both in the first few lines of the handler: the signature is
+verified against the **raw body** before anything parses it, and the delivery is acknowledged
+**before** the work starts. wapi retries on any non-2xx, and a model turn takes seconds — so a
+handler that keeps the connection open turns one message into several.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant P as Someone in a group
+    participant W as wapi
+    participant H as webhook route
+    participant DB as Postgres
+    participant AI as OpenAI
+
+    P->>W: @wspbot what did I miss?
+    W->>H: signed POST
+    H->>H: verify HMAC over the raw body
+    H-->>W: 200 — immediately
+    Note over H,AI: everything below runs in after(), off the response
+    H->>DB: claim the message id — deliveries retry
+    H->>DB: is this sender within their quota?
+    H->>DB: features, memory, checklist, reminders, stickers
+    H->>AI: prompt + only the tools that are switched on
+    AI-->>H: an answer, or a tool call
+    H->>W: send text, media, or a reaction
+    W->>P: the reply
+    H->>DB: record tokens and estimated spend
 ```
-
-wapi has **no endpoint that lists received messages** — inbound exists only as a webhook push.
-That single fact shapes the app: there is nothing to poll, so the whole thing hangs off one route
-handler that has to be publicly reachable. Which is exactly what deploying gives you.
-
-Two halves that share almost nothing. `/api/wapi/webhook` takes messages and answers them. The
-rest is a dashboard under `/dashboard`, behind a sign-in, that configures what the bot is allowed
-to do — and the only thing passing between them is a table of switches. `/` is a public landing
-page and the only route deliberately left open.
 
 ## The landing page
 
@@ -62,7 +163,7 @@ Same look as the landing page — forged gold on obsidian, Geist throughout — 
 same product. There is one theme rather than a light and a dark: the brand's resting state is
 obsidian, and a dashboard read beside the front door is better off matching it.
 
-Seven sections under `/dashboard`, each behind the sign-in:
+Eight sections under `/dashboard`, each behind the sign-in:
 
 | | |
 | --- | --- |

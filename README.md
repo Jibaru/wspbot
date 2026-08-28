@@ -18,21 +18,21 @@ bot   → Done.
 
 ```
 WhatsApp ──▶ wapi ──POST /api/wapi/webhook──▶ this app
-                                                 │
                                                  ├─▶ OpenAI (+ web search)
-                                                 ├─▶ Postgres (memory + history)
-                                                 └─▶ wapi /api/send-message ──▶ WhatsApp
+                                                 ├─▶ ffmpeg (stickers, voice notes, video)
+                                                 ├─▶ Postgres (memory, history, settings)
+                                                 └─▶ wapi ──▶ WhatsApp
+
+you ──▶ /login ──▶ the dashboard ──▶ which abilities the bot is given
 ```
 
 wapi has **no endpoint that lists received messages** — inbound exists only as a webhook push.
-That single fact shapes the app: there is nothing to poll, so the whole thing is one route
+That single fact shapes the app: there is nothing to poll, so the whole thing hangs off one route
 handler that has to be publicly reachable. Which is exactly what deploying gives you.
 
-Two pages:
-
-- `/` — the dashboard, behind a sign-in: Overview, Features, Rate limits, Stickers, Memory,
-  Reminders and Usage, each at its own URL.
-- `/api/wapi/webhook` — where wapi delivers messages.
+Two halves that share almost nothing. `/api/wapi/webhook` takes messages and answers them. The
+rest is a dashboard, behind a sign-in, that configures what the bot is allowed to do — and the
+only thing passing between them is a table of switches.
 
 ## The dashboard
 
@@ -574,7 +574,7 @@ insert into memories (chat, text) values ('global', 'the office wifi password is
 | `BOT_EFFORT` | `low` | Reasoning depth. Raise it if answers feel shallow, at the cost of latency. |
 | `BOT_REPLY_TO_DMS` | `false` | Answer one-to-one chats too. Groups always require a tag regardless. |
 | `BOT_TIMEZONE` | `UTC` | What "9am" means. Reminders are wrong without it. |
-| `BOT_RATE_LIMIT_PER_MINUTE` | `1` | Default allowance per person. Override individuals in the `rate_limits` table. |
+| `BOT_RATE_LIMIT_PER_MINUTE` | `1` | Default allowance per person. Override individuals on `/limits`. |
 
 Replies are requested at low verbosity — a WhatsApp message that needs scrolling has already
 failed. The bot's manners live in the system prompt in `lib/agent.ts`.
@@ -582,7 +582,9 @@ failed. The bot's manners live in the system prompt in `lib/agent.ts`.
 ## Checks
 
 ```bash
-npm run smoke           # signature verification + "is this message for me?" — no keys needed
+npm run smoke           # signatures, "is this message for me?", what the gate covers — no keys
+npm run features-check  # every tool belongs to a switch, and every switch does something
+npm run wapi-check      # the vendored SDK against the real wapi API (needs WAPI_API_KEY)
 npm run sticker-check   # real ffmpeg conversion: 512x512, animated, under size ceilings
 npm run voice-check     # voice notes really are Ogg/Opus mono 48kHz, per ffprobe
 npm run video-check     # video really is H.264/yuv420p/AAC in MP4, per ffprobe
@@ -594,23 +596,54 @@ npm run build           # typecheck and production build
 `npm run sticker-check` also drives the SSRF guard — every private range, IPv4-mapped IPv6, and
 URLs like `http://169.254.169.254/` and `file:///etc/passwd` must be refused before a connection
 is made — and downloads a real remote GIF end to end. It needs ffmpeg on PATH. It builds a non-square video and image, runs them
-through `lib/sticker-maker`, and reads the WebP container back to confirm the canvas is 512x512,
+through `lib/sticker-maker.ts`, and reads the WebP container back to confirm the canvas is 512x512,
 that animated input really produced ANIM/ANMF frames, and that the padding kept an alpha
 channel. `ffprobe` cannot parse animated WebP, which is why it inspects the chunks directly.
 
 `npm run smoke` is the one worth running after touching `lib/mentions.ts`: it drives group
 tagging, reply-to-bot, DMs, disappearing-message wrappers, own-message suppression, and both
-webhook signing schemes.
+webhook signing schemes. It also reads the matcher out of `proxy.ts` and asserts which paths it
+actually gates — a check that exists because a single missing backslash once left every page but
+the root wide open while still typechecking and building.
+
+`npm run wapi-check` is the one worth running after touching anything in `lib/wapi.ts` or
+refreshing the vendored SDK. It drives the real API: the three response envelopes, a 403 for the
+wrong credential type against a 401 for a bad one, and one genuine send — into a sandbox session
+it creates and then deletes, whose number sits under country code 999, which is unassigned and
+cannot route anywhere. Nothing reaches a real chat.
 
 ## Notes on the wapi integration
 
-Details that cost real debugging time, handled in `lib/wapi.ts` and the webhook route:
+The client is the **official wapi TypeScript SDK**, vendored into `lib/wapi-sdk/`. It is not
+published to npm, so it is taken with `giget` the way the docs prescribe:
 
-- **Five success envelopes, two failure envelopes.** Route handlers set `error`; middleware sets
-  `message`. Reading only one loses half the failures.
+```bash
+npm run vendor-wapi-sdk   # fetch upstream, then strip .js from its relative imports
+npm run wapi-check        # prove the result against the real API
+```
+
+That second step in the vendor script is not cosmetic. The SDK is written for Node's ESM rules,
+where a relative import of a TypeScript file is spelled `./http.js`. TypeScript resolves that
+back to `.ts` under `moduleResolution: "bundler"` — and **Turbopack does not**, so `tsc --noEmit`
+passes while `next build` fails to resolve the module.
+
+`lib/wapi.ts` is now a thin facade over it, holding only what is ours rather than the API's:
+`server-only`, so importing it from a client component is a build error rather than a leaked
+credential; the identity cache; and two clients, because a client holds exactly one credential.
+
+Details that still cost real debugging time:
+
+- **Two credentials, not interchangeable.** A session key covers messaging, media and contacts; a
+  Personal Access Token covers session administration, including `connect`. The wrong *type*
+  returns **403**, not 401 — `WapiAuthError.isWrongCredentialType` draws the line, and
+  `npm run wapi-check` asserts it.
+- **The SDK's send union forbids a caption on a document; the endpoint allows one.** `text` and
+  `documentUrl` are independent optional fields in the request body, so `lib/wapi.ts` widens the
+  type deliberately rather than lose the caption from every PDF the bot sends.
 - **The default webhook signature is a plain string compare**, not an HMAC — the header carries
   the secret itself. wapi also supports HMAC-SHA256 per session; the handler accepts both, so
-  turning that on needs no redeploy.
+  turning that on needs no redeploy. This half is ours, not the SDK's: signature verification
+  happens on the raw body before anything parses it.
 - **Deliveries are acknowledged before the reply is generated**, via `after()`. Any non-2xx makes
   wapi retry with backoff, and a model turn takes seconds — holding the response open turns one
   message into several.
@@ -625,22 +658,38 @@ Background on all of it: `.agents/skills/wapi-nextjs/references/api-notes.md`.
 ## Layout
 
 ```
+app/api/wapi/webhook/route.ts    inbound: verify, ack, then reply in after()
+lib/signature.ts                 webhook signature verification, on the raw body
+lib/mentions.ts                  parsing WhatsApp message nodes, "is this for me?"
+lib/inbound-media.ts             decrypting what arrived attached
+
+lib/agent.ts                     the model turn: prompt, web search, every tool
+lib/features.ts                  the registry: switches, tool ownership, self-description
+lib/about.ts                     what the bot knows about itself
+lib/memory.ts                    facts, scoped per chat or global
+lib/tasks.ts                     the per-chat checklist
+lib/reminders.ts                 scheduled work; lib/reminder-runner.ts fires it
+lib/rate-limit.ts                per-person quotas, checked before anything costs money
+lib/usage.ts                     token accounting and the cost estimate
+
+proxy.ts                         gates every dashboard page in one place
+lib/auth.ts                      bcrypt at sign-in, a signed cookie thereafter
+app/login/                       the sign-in page and its server action
 app/(dash)/                      the dashboard, one route per section
-app/api/wapi/webhook/route.ts    inbound: verify, ack, then reply
-lib/agent.ts                     the model turn: prompt, web search, memory tools
-lib/memory.ts                    facts, scoped per chat
+
+lib/wapi.ts                      thin facade over the vendored SDK
+lib/wapi-sdk/                    the official wapi SDK, vendored
 lib/stickers.ts                  the sticker library: decrypt, dedupe, describe, store
 lib/sticker-maker.ts             ffmpeg: anything -> 512x512 WebP, animation preserved
-lib/fetch-media.ts               guarded remote downloads (SSRF, redirects, size cap)
-lib/about.ts                     what the bot knows about itself
-lib/notion.ts                    Notion OAuth and the page operations
-lib/oauth-state.ts               the signed state that binds a connection to a chat
-lib/usage.ts                     token accounting and the cost estimate
 lib/audio.ts                     TTS output -> Ogg/Opus, the voice-note format
 lib/video.ts                     anything -> H.264/AAC MP4, the format that plays
 lib/ffmpeg.ts                    shared ffmpeg runner and scratch directories
-lib/mentions.ts                  parsing WhatsApp message nodes, "is this for me?"
-lib/wapi.ts                      wapi REST client
-lib/signature.ts                 webhook signature verification
-lib/db.ts                        Postgres pool and schema
+lib/fetch-media.ts               guarded remote downloads (SSRF, redirects, size cap)
+
+lib/notion.ts                    Notion OAuth and the page operations
+lib/oauth-state.ts               the signed state that binds a connection to a chat
+lib/sheets.ts                    Google Sheets, read and write
+lib/session.ts                   noticing a dropped session and reconnecting it
+lib/db.ts                        Postgres pool and the idempotent schema
+lib/config.ts                    environment, validated
 ```

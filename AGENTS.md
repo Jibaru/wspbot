@@ -15,39 +15,78 @@ a Dokploy VPS at `wspbot.crafter.run`. Built by Jibaru of Crafter Station (jibar
 
 ## Shape
 
+Two ways in, and they share almost nothing. Messages arrive as a webhook push and are answered
+by the model; the dashboard is a set of gated pages that configure what the model is allowed to
+do. The `features` table is the only thing both halves touch.
+
 ```
 WhatsApp ──▶ wapi ──POST /api/wapi/webhook──▶ this app
                                                  ├─▶ OpenAI via the Vercel AI SDK (+ web search)
-                                                 ├─▶ ffmpeg (stickers, voice notes)
-                                                 ├─▶ Postgres (memory, history, stickers, usage)
-                                                 └─▶ wapi /api/send-message ──▶ WhatsApp
+                                                 ├─▶ ffmpeg (stickers, voice notes, video)
+                                                 ├─▶ Postgres ◀── the dashboard writes here
+                                                 └─▶ wapi, via the vendored SDK ──▶ WhatsApp
+
+you ──▶ /login ──▶ proxy.ts ──▶ /features /limits /stickers /memory /reminders /usage
+                                     │
+                                     └─▶ features table ──▶ which tools a turn is given
 ```
 
+**Inbound**
+
 ```
-proxy.ts                         gates the dashboard (Next 16 renamed middleware -> proxy)
-public/                          generated icon set; rebuild from public/icon.config.json
-app/login/                       sign-in page and its server action
-lib/auth.ts                      bcrypt at sign-in, signed cookie thereafter
-app/(dash)/                      the dashboard: one route per section, all gated
-app/(dash)/layout.tsx            shell + section nav; app/(dash)/nav.tsx marks the current one
-lib/features.ts                  the feature registry: switches, tool ownership, self-description
-app/api/wapi/webhook/route.ts    the only entry point for inbound messages
-instrumentation.ts               starts the session watchdog at boot
-lib/agent.ts                     the model turn: prompt + every tool
+app/api/wapi/webhook/route.ts    the only entry point for messages; verify, ack, work in after()
+lib/signature.ts                 webhook signature verification (plain compare or HMAC)
+lib/mentions.ts                  parsing message nodes, "is this for me?"
+lib/inbound-media.ts             decrypting what arrived attached
+```
+
+**The turn**
+
+```
+lib/agent.ts                     prompt + every tool; the whole model turn
+lib/features.ts                  the registry: switches, tool ownership, self-description
 lib/about.ts                     what the bot knows about itself
-lib/notion.ts                    Notion OAuth + page operations
-lib/oauth-state.ts               signed OAuth state (no server-only, so it is testable)
 lib/memory.ts                    facts, per chat or global
+lib/tasks.ts                     the per-chat checklist
+lib/reminders.ts                 scheduled work; lib/reminder-runner.ts fires it
+lib/rate-limit.ts                per-person quotas, checked before anything costs money
+lib/usage.ts                     token accounting, cost estimate
+```
+
+**Dashboard**
+
+```
+proxy.ts                         gates every page (Next 16 renamed middleware -> proxy)
+lib/auth.ts                      bcrypt at sign-in, signed cookie thereafter
+app/login/                       sign-in page and its server action
+app/(dash)/                      one route per section, each with its own actions.ts
+app/(dash)/layout.tsx            shell + nav; nav.tsx is the only client component
+public/                          generated icon set; rebuild from public/icon.config.json
+```
+
+**Outbound and media**
+
+```
+lib/wapi.ts                      thin facade over the SDK: server-only, identity cache, 2 clients
+lib/wapi-sdk/                    the official wapi SDK, vendored (see below)
 lib/stickers.ts                  the shared sticker library
 lib/sticker-maker.ts             ffmpeg: anything -> 512x512 WebP
 lib/audio.ts                     TTS output -> Ogg/Opus
+lib/video.ts                     anything -> H.264/AAC MP4
 lib/ffmpeg.ts                    shared ffmpeg runner + scratch dirs
 lib/fetch-media.ts               guarded remote downloads (SSRF)
-lib/mentions.ts                  parsing message nodes, "is this for me?"
+```
+
+**Integrations and plumbing**
+
+```
+lib/notion.ts                    Notion OAuth + page operations
+lib/oauth-state.ts               signed OAuth state (no server-only, so it is testable)
+lib/sheets.ts                    Google Sheets read and write
 lib/session.ts                   reconnecting a dropped WhatsApp session
-lib/usage.ts                     token accounting, cost estimate
-lib/wapi-sdk/                    the official wapi SDK, vendored (see below)
-lib/signature.ts  lib/wapi.ts  lib/db.ts  lib/config.ts
+instrumentation.ts               starts the session watchdog and the reminder tick at boot
+lib/db.ts                        Postgres pool + the idempotent DDL
+lib/config.ts                    environment, validated at the point of use
 ```
 
 ## Things that will be re-broken if you don't know them
@@ -115,11 +154,6 @@ like a simplification opportunity.
   `PostApiSendMessageBody` has `text` and `documentUrl` as independent optional fields, so
   `lib/wapi.ts` widens the type deliberately. Narrowing to match the SDK would drop the caption
   from every PDF the bot sends — a behaviour change wearing a refactor's clothes.
-- **The proxy matcher's `\\.` needs both backslashes.** `"\\."` in a TypeScript string is an
-  invalid escape that collapses to a plain `"."`, so an exclusion meant for files with an
-  extension quietly becomes *any non-empty path* — every page but the root falls out of the
-  gate. It typechecks, it builds, and `/` still redirects, so nothing looks wrong. `npm run
-  smoke` asserts what the string actually matches.
 - **A feature switch that owns no tools must be read by hand somewhere.** Tools are withdrawn
   automatically; a prompt- or handler-only feature (`quoted`, `stickers_collect`) is inert
   unless something checks it. `npm run features-check` fails when one is not.
@@ -132,6 +166,13 @@ like a simplification opportunity.
   fine. Static files need the same exemption: naming `favicon.ico` alone left the rest of the
   icon set answering a signed-out browser with a redirect, so the tab icon and the manifest
   simply never loaded.
+- **That matcher's `\\.` needs both backslashes.** `"\\."` in a TypeScript string is an invalid
+  escape that collapses to a plain `"."`, so the exclusion above becomes *any non-empty path* and
+  every page but the root falls out of the gate. It typechecks, it builds, and `/` still
+  redirects, so nothing looks wrong. `npm run smoke` asserts what the string actually matches.
+- **`next start` does not serve this app.** `output: "standalone"` means the built server is
+  `.next/standalone/server.js`; `next start` prints a warning and then behaves differently enough
+  to mislead. Test a production build with `node .next/standalone/server.js`, or in Docker.
 - **Groups only, and only when tagged.** DMs are ignored by default (`BOT_REPLY_TO_DMS`).
   Stickers are the sole exception: collected untagged, silently, never answered.
 
@@ -159,15 +200,21 @@ like a simplification opportunity.
 - `lib/about.ts` describes the deployment, so it lives in code rather than the database — it
   should change in the same commit the deployment does. Nothing secret goes in it; it is read
   aloud to whoever asks.
+- Dashboard pages are server components that read their own data and mutate through Server
+  Actions in a sibling `actions.ts`, ending in `revalidatePath`. Forms post to the action
+  directly, so every control works with JavaScript off — which is also what makes them testable
+  with `curl`.
+- **No page checks the session.** `proxy.ts` gates all of them in one place, which is the only
+  way to be sure a page added later cannot forget to.
 
 ## Checks
 
 ```bash
-npm run smoke           # signature verification, "is this for me?", what the gate covers
+npm run smoke           # signatures, "is this for me?", what the gate covers, and whether
+                        # these two files still point at things that exist
 npm run features-check  # every tool belongs to a switch, and every switch does something
 npm run wapi-check      # the vendored SDK against the real API: envelopes, both error types,
                         # and one real send into a throwaway sandbox session (needs WAPI_PAT)
-npm run vendor-wapi-sdk # refresh lib/wapi-sdk from upstream, with the import fixup
 npm run sticker-check   # real ffmpeg conversion + the SSRF guard (needs ffmpeg)
 npm run voice-check     # voice notes really are Ogg/Opus mono 48kHz, per ffprobe
 npm run draw-check      # one real image generation, checks alpha survives (costs money)
@@ -176,6 +223,9 @@ npm run models-check    # run after ANY model change: does the tier accept tools
                         # effort, verbosity and a transparent background? (costs money)
 npm run build           # typecheck + production build
 ```
+
+`npm run vendor-wapi-sdk` is not a check — it refreshes `lib/wapi-sdk` from upstream, with the
+import fixup that Turbopack needs. Run `wapi-check` afterwards.
 
 Prefer verifying against the real thing over asserting. These scripts read the WebP container and
 probe the audio rather than trusting a file extension, because that is the class of bug that

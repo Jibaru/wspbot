@@ -5,7 +5,7 @@
  * Needs no database, no WhatsApp session and no OpenAI key — run it any time with `npm run smoke`.
  */
 import { createHmac } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
 import { verify } from "../lib/signature";
 import * as mentions from "../lib/mentions";
 import { encodeState, decodeState } from "../lib/oauth-state";
@@ -335,6 +335,45 @@ console.log("\nOAuth state (which chat a Notion connection belongs to):");
 
   // Two links for the same chat must differ, or one could be replayed as the other.
   check("two states differ", encodeState(CHAT, SECRET) !== encodeState(CHAT, SECRET), true);
+}
+
+/**
+ * Do AGENTS.md and README.md still describe this repository?
+ *
+ * Both carry file maps and lists of commands, and both are read by people and agents deciding
+ * where to look. A path that no longer exists sends them somewhere else entirely, and it is the
+ * kind of rot nothing else notices — documentation compiles no matter what it claims.
+ *
+ * Only paths under the directories this app owns are checked, so references to `node_modules`
+ * or to an external repository are left alone.
+ */
+{
+  console.log("\ndocumentation:");
+  const owned = /(?:^|[\s`(])((?:app|lib|scripts|public)\/[\w./()-]*[\w)/]|proxy\.ts|instrumentation\.ts|docker-compose\.yml|Dockerfile)/g;
+
+  for (const doc of ["AGENTS.md", "README.md"]) {
+    const text = readFileSync(new URL(`../${doc}`, import.meta.url), "utf8");
+
+    const paths = new Set(
+      [...text.matchAll(owned)]
+        .map((m) => m[1] as string)
+        .filter((p) => !p.startsWith("node_modules")),
+    );
+    const missing = [...paths].filter(
+      (p) => !existsSync(new URL(`../${p.replace(/\/$/, "")}`, import.meta.url)),
+    );
+    check(`${doc}: all ${paths.size} paths it names exist`, missing, []);
+
+    // Every `npm run x` it tells you to run has to be a script that exists.
+    const scripts = new Set(
+      [...text.matchAll(/npm run ([a-z-]+)/g)].map((m) => m[1] as string),
+    );
+    const pkg = JSON.parse(
+      readFileSync(new URL("../package.json", import.meta.url), "utf8"),
+    ) as { scripts: Record<string, string> };
+    const unknown = [...scripts].filter((s) => !(s in pkg.scripts));
+    check(`${doc}: all ${scripts.size} npm commands it names exist`, unknown, []);
+  }
 }
 
 /**

@@ -57,6 +57,33 @@
   text-decoration: none;
 }
 
+/*
+ * The rule above is `.lp a` — specificity (0,1,1) — which beats a bare `.lp-btn` at (0,1,0).
+ * So a button that set its own colour lost to the reset and inherited near-white onto forged
+ * gold: about 1.4:1, which is unreadable. Every link that carries a background states its colour
+ * at `.lp a.<class>` so it outranks the reset rather than tying with it.
+ */
+.lp a.lp-btn {
+  color: var(--obsidian);
+}
+
+.lp a.lp-btn.ghost {
+  color: var(--ink);
+}
+
+.lp a.lp-btn.ghost:hover {
+  color: var(--gold);
+}
+
+/* Outranks `.lp-nav nav a`, which is the same specificity and would otherwise win on order. */
+.lp-nav nav a.lp-signin {
+  color: var(--ink);
+}
+
+.lp-nav nav a.lp-signin:hover {
+  color: var(--gold);
+}
+
 .lp-wrap {
   width: min(72rem, 100% - 3rem);
   margin-inline: auto;
@@ -69,7 +96,11 @@
   color: var(--gold);
 }
 
+/* Horizontal lockup: mark at the wordmark's cap height, gap R/2 = 32 units of 258. */
 .lp-mark {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
   font-weight: 700;
   letter-spacing: -0.025em;
   font-size: 1.05rem;
@@ -102,7 +133,9 @@
 }
 
 .lp-nav .lp-signin {
-  color: var(--ink);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
   border: 1px solid var(--edge);
   border-radius: 999px;
   padding: 0.4rem 0.95rem;
@@ -113,7 +146,6 @@
 
 .lp-nav .lp-signin:hover {
   border-color: var(--gold);
-  color: var(--gold);
 }
 
 /* ── hero ────────────────────────────────────────────────────────────── */
@@ -199,7 +231,6 @@
   padding: 0.7rem 1.3rem;
   border-radius: 999px;
   background: var(--gold);
-  color: var(--obsidian);
   border: 1px solid var(--gold);
   transition:
     transform var(--t2) var(--ease-back),
@@ -215,14 +246,12 @@
 
 .lp-btn.ghost {
   background: transparent;
-  color: var(--ink);
   border-color: var(--edge);
   box-shadow: none;
 }
 
 .lp-btn.ghost:hover {
   border-color: var(--gold);
-  color: var(--gold);
   transform: translateY(-2px);
 }
 
@@ -279,16 +308,21 @@
   color: var(--muted);
 }
 
+/* The mark on its own, which is what the system reserves it for: avatars and app icons. */
 .lp-avatar {
-  width: 26px;
-  height: 26px;
+  width: 28px;
+  height: 28px;
   border-radius: 50%;
-  background: var(--gold);
-  color: var(--obsidian);
+  background: var(--surface);
+  border: 1px solid var(--edge);
   display: grid;
   place-items: center;
-  font-weight: 700;
-  font-size: 0.72rem;
+}
+
+.lp-footer-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 .lp-msg {

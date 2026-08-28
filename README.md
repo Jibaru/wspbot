@@ -47,6 +47,11 @@ with the bot answering after; nothing floats or parallaxes; and the only thing t
 is the status dot, because it reports something true. It is all CSS, so it works with JavaScript
 off, and `prefers-reduced-motion` turns the whole thing off including the dot.
 
+The Crafter Station mark is the real artwork, reproduced from the brand system rather than
+redrawn — their forbidden list ends with "replace with similar marks". It appears as the
+horizontal lockup in the footer, beside the wordmark in the nav, and on its own as the group
+avatar, which is what the system reserves the bare mark for.
+
 The capability grid is read from `lib/features.ts` rather than written out again, for the same
 reason `lib/about.ts` is: a landing page quietly advertising an ability that was removed is the
 same rot in a nicer typeface.
@@ -651,6 +656,7 @@ npm run smoke           # signatures, "is this message for me?", what the gate c
 npm run features-check  # every tool belongs to a switch, and every switch does something
 npm run wapi-check      # the vendored SDK against the real wapi API (needs WAPI_API_KEY)
 npm run cron-check      # the cron evaluator, including both daylight-saving transitions
+npm run contrast-check  # what the landing page text actually resolves to, and its contrast
 npm run summary-check   # one real digest end to end (costs money, needs DATABASE_URL)
 npm run sticker-check   # real ffmpeg conversion: 512x512, animated, under size ceilings
 npm run voice-check     # voice notes really are Ogg/Opus mono 48kHz, per ffprobe

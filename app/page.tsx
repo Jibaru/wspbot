@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Geist, Geist_Mono } from "next/font/google";
 import { FEATURES, ALWAYS } from "@/lib/features";
+import { CrafterMark, CrafterLockup } from "./crafter-mark";
 import "./landing.css";
 
 /**
@@ -92,6 +93,7 @@ export default function Landing() {
       <div className="lp-wrap">
         <header className="lp-nav">
           <span className="lp-mark">
+            <CrafterMark id="nav" size={22} />
             wspbot<span className="lp-dot">.</span>
           </span>
           <nav>
@@ -135,8 +137,8 @@ export default function Landing() {
 
           <div className="lp-thread" aria-label="An example conversation">
             <div className="lp-thread-head">
-              <span className="lp-avatar" aria-hidden="true">
-                CS
+              <span className="lp-avatar">
+                <CrafterMark id="avatar" size={17} />
               </span>
               Deploy · 6 members
             </div>
@@ -201,6 +203,9 @@ export default function Landing() {
         </section>
 
         <footer className="lp-footer">
+          <span className="lp-footer-brand">
+            <CrafterLockup id="footer" size={18} />
+          </span>
           <span>
             Built by{" "}
             <a href="https://jibaru.dev" target="_blank" rel="noreferrer">

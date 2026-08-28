@@ -9,6 +9,8 @@ import * as stickers from "@/lib/stickers";
 import { ensureConnected } from "@/lib/session";
 import * as rateLimit from "@/lib/rate-limit";
 import * as features from "@/lib/features";
+import * as summaries from "@/lib/summaries";
+import * as recorder from "@/lib/summary-recorder";
 
 /**
  * wapi webhook receiver — the only way inbound WhatsApp messages reach this app. wapi has no
@@ -100,6 +102,7 @@ async function handle({ event, data }: WebhookBody): Promise<void> {
   const me = await wapi.meCached();
   const identity = mentions.identityOf(me);
 
+  const enabled = await features.enabled();
   const willReply = mentions.shouldReply(message, identity, config.replyToDms());
   /**
    * Stickers are collected without being answered — that is the point, the bot builds a library
@@ -107,13 +110,45 @@ async function handle({ event, data }: WebhookBody): Promise<void> {
    * at a message, only whether to reply to one.
    */
   const willCapture =
-    message.media?.kind === "sticker" &&
-    (await features.enabled()).has("stickers_collect");
+    message.media?.kind === "sticker" && enabled.has("stickers_collect");
+
+  /**
+   * The one case where a message nobody addressed to the bot is written down: a group somebody
+   * has scheduled a summary of. Deliberately narrow — the feature has to be on *and* this chat
+   * has to be the source of an enabled schedule — and `recordedChats` is cached, because this
+   * runs on every message in every group the bot sits in, including all the ones it ignores.
+   */
+  const willRecord =
+    message.isGroup &&
+    enabled.has("summaries") &&
+    (await summaries.recordedChats()).has(message.chat);
 
   // Claimed only when there is work to do, so ignored chatter does not fill the table.
-  if (!willReply && !willCapture) return;
+  if (!willReply && !willCapture && !willRecord) return;
   if (!(await claim(message.messageId))) return;
 
+  /**
+   * Started, not awaited: recording an image means decrypting it, describing it and re-hosting
+   * it, which takes seconds — and somebody who tagged the bot in that same message is waiting.
+   * The `finally` below is what keeps the promise alive, since `after()` stops when this
+   * function's promise settles and a floating one would be cut off mid-upload.
+   */
+  const recording = willRecord ? recorder.record(message) : Promise.resolve();
+
+  try {
+    await handleReply(message, identity, willReply, willCapture);
+  } finally {
+    await recording;
+  }
+}
+
+/** The reply half, split out so recording can run alongside it rather than behind it. */
+async function handleReply(
+  message: NonNullable<ReturnType<typeof mentions.parse>>,
+  identity: string[],
+  willReply: boolean,
+  willCapture: boolean,
+): Promise<void> {
   if (willCapture) {
     await stickers.capture(message.chat, message.senderName, message.media!.node);
   }

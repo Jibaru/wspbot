@@ -9,6 +9,8 @@
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "smoke": "tsx scripts/smoke.ts",
+    "cron-check": "tsx scripts/cron-check.mts",
+    "summary-check": "tsx --conditions=react-server --env-file=.env scripts/summary-check.mts",
     "features-check": "tsx --conditions=react-server scripts/features-check.mts",
     "wapi-check": "tsx --conditions=react-server --env-file=.env scripts/wapi-check.mts",
     "vendor-wapi-sdk": "node scripts/vendor-wapi-sdk.mjs",

@@ -440,6 +440,52 @@ data is not undoable from a chat.
 The JWT is signed with `node:crypto` rather than pulling in `googleapis` — an enormous dependency
 for one signature and three REST calls.
 
+## Scheduled summaries
+
+Point the bot at a group, give it a cron pattern and a destination, and it posts a digest of what
+was said. Set up on `/summaries`, never from a chat.
+
+```
+Equipo Deploy  →  Resúmenes        0 9 * * *        next 29 Aug 09:00
+```
+
+A digest leads with what people actually need: decisions and who made them, commitments and
+deadlines, questions still open, every link in full, and the pictures worth seeing. It is written
+in the language the group is speaking.
+
+```
+*Decisiones y compromisos*
+- El deploy queda confirmado para el viernes 5 a las 15:00.
+- Ana arreglará hoy el bug del refresh token que bloquea el login (captura #1).
+
+*Pregunta abierta*
+- Beto preguntó si la base de datos se migra antes o después del deploy; quedó sin respuesta.
+
+*Enlaces compartidos*
+- Checklist del release: https://docs.example.com/release-checklist
+```
+
+**Enabling a schedule starts recording the source group in full** — every message, not only the
+ones tagging the bot. That is what a digest is made of, and it is the only thing this app does
+with messages nobody addressed to it. So:
+
+- Recording happens **only** while a schedule is enabled and the `summaries` feature is on.
+  Switching either off stops it immediately.
+- Nothing is kept longer than a fortnight.
+- The bot knows when the room it is in is being recorded, and will say so plainly if anyone asks.
+  It will not deny it, and it will not bring it up unprompted.
+- Pictures are described by the vision model **as they arrive**, because the link WhatsApp gives
+  for an inbound image dies within the hour — a digest running tomorrow can only know what was
+  written down today. They are also re-uploaded, which is what lets the digest attach one.
+
+The schedule is five-field cron — minute, hour, day, month, weekday — read in `BOT_TIMEZONE`.
+`0 9 * * *` is every morning at nine; `0 18 * * 1-5` weekday evenings; `0 */6 * * *` every six
+hours. The page shows the next run so you can see the pattern does what you meant.
+
+Each schedule keeps a watermark and summarises only what has happened since its last **successful**
+run, so nothing is covered twice and a failed run is retried at the next firing rather than
+skipping a day.
+
 ## Rate limiting
 
 One person may set the bot working **once a minute** by default. Over that, they get a short
@@ -573,7 +619,8 @@ insert into memories (chat, text) values ('global', 'the office wifi password is
 | `BOT_IMAGE_MODEL` | `gpt-image-1` | Must support a transparent background. `-mini` is ~80% cheaper. |
 | `BOT_EFFORT` | `low` | Reasoning depth. Raise it if answers feel shallow, at the cost of latency. |
 | `BOT_REPLY_TO_DMS` | `false` | Answer one-to-one chats too. Groups always require a tag regardless. |
-| `BOT_TIMEZONE` | `UTC` | What "9am" means. Reminders are wrong without it. |
+| `BOT_TIMEZONE` | `UTC` | What "9am" means. Reminders and summary schedules are wrong without it. |
+| `BOT_SUMMARY_MODEL` | `gpt-5.6-sol` | Writes the scheduled digests. Worth the top tier: it runs rarely, on a long transcript, and a digest that drops the decision is worse than none. |
 | `BOT_RATE_LIMIT_PER_MINUTE` | `1` | Default allowance per person. Override individuals on `/limits`. |
 
 Replies are requested at low verbosity — a WhatsApp message that needs scrolling has already
@@ -585,6 +632,8 @@ failed. The bot's manners live in the system prompt in `lib/agent.ts`.
 npm run smoke           # signatures, "is this message for me?", what the gate covers — no keys
 npm run features-check  # every tool belongs to a switch, and every switch does something
 npm run wapi-check      # the vendored SDK against the real wapi API (needs WAPI_API_KEY)
+npm run cron-check      # the cron evaluator, including both daylight-saving transitions
+npm run summary-check   # one real digest end to end (costs money, needs DATABASE_URL)
 npm run sticker-check   # real ffmpeg conversion: 512x512, animated, under size ceilings
 npm run voice-check     # voice notes really are Ogg/Opus mono 48kHz, per ffprobe
 npm run video-check     # video really is H.264/yuv420p/AAC in MP4, per ffprobe
@@ -670,6 +719,10 @@ lib/memory.ts                    facts, scoped per chat or global
 lib/tasks.ts                     the per-chat checklist
 lib/reminders.ts                 scheduled work; lib/reminder-runner.ts fires it
 lib/rate-limit.ts                per-person quotas, checked before anything costs money
+lib/summaries.ts                 scheduled digests: schedules, the message log, the transcript
+lib/summary-recorder.ts          writing down a recorded group, describing its pictures
+lib/summary-runner.ts            composing a digest and posting it
+lib/cron.ts                      five-field cron, as "does this minute match?"
 lib/usage.ts                     token accounting and the cost estimate
 
 proxy.ts                         gates every dashboard page in one place

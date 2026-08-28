@@ -188,6 +188,13 @@ export const FEATURES: Feature[] = [
     needs: "notion",
   },
   {
+    key: "summaries",
+    title: "Summarises a group on a schedule",
+    detail:
+      "Reads one group and posts a digest into another on a cron — decisions, open questions, links and pictures. The source group is recorded in full while this is on, including messages that do not tag the bot; nothing else is, and it is kept for a fortnight.",
+    tools: [],
+  },
+  {
     key: "usage_report",
     title: "Reports its usage",
     detail: "Tokens and estimated spend for today, the last week and all time.",

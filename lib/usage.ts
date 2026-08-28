@@ -15,7 +15,7 @@ import { query } from "./db";
  * none, because it is the kind of number people budget against.
  */
 
-export type Kind = "reply" | "vision" | "speech" | "image";
+export type Kind = "reply" | "vision" | "speech" | "image" | "summary";
 
 /**
  * Structural rather than the SDK type, because image generation reports a narrower usage shape

@@ -50,6 +50,9 @@ lib/memory.ts                    facts, per chat or global
 lib/tasks.ts                     the per-chat checklist
 lib/reminders.ts                 scheduled work; lib/reminder-runner.ts fires it
 lib/rate-limit.ts                per-person quotas, checked before anything costs money
+lib/summaries.ts                 scheduled digests: schedules, the log, the transcript
+lib/summary-recorder.ts          writing down a recorded group; lib/summary-runner.ts fires it
+lib/cron.ts                      five-field cron, evaluated as "does this minute match?"
 lib/usage.ts                     token accounting, cost estimate
 ```
 
@@ -144,6 +147,21 @@ like a simplification opportunity.
   imports, and nothing imports a favicon, so the directory is not in the trace. Everything in it
   then 404s in production while `next start` serves it locally — the icons were live in the
   HTML and missing from the image.
+- **`bigserial` comes back from `pg` as a string.** `logged_messages.id` compared `=== 3` is
+  false for the row whose id is `"3"`, so the digest silently attached no pictures at all while
+  every type checked out. Coerced at the boundary in `windowFor`. Suspect it wherever an id is
+  compared rather than interpolated.
+- **A picture is described when it arrives, never later.** Inbound media is encrypted and the
+  decrypted URL dies within the hour, so a digest that runs tomorrow can only know what was
+  written down today. That is also why the recorder re-uploads: that URL does not expire, and it
+  is the only way the digest can still attach the image.
+- **The model gets picture numbers, not row ids.** Asked to cite `#4821` it answers `3`, meaning
+  the third picture. `summaries.render` numbers them 1..n per digest and returns the mapping in
+  the same call, so the numbering and the lookup cannot drift apart.
+- **Recording is the only place the bot reads messages nobody sent it.** Gated on the feature
+  *and* on the chat being the source of an enabled schedule, cached for 30s because it is
+  consulted for every message in every group. `systemPrompt` tells the bot when the room it is
+  in is being recorded, so "are you logging this?" gets a true answer.
 - **The wapi SDK is vendored, not installed, and needs one edit on the way in.** It is not
   published to npm; `npm run vendor-wapi-sdk` fetches it with `giget` and then strips the `.js`
   suffix from its relative imports. That second step is not cosmetic: the SDK is written for
@@ -213,6 +231,9 @@ like a simplification opportunity.
 npm run smoke           # signatures, "is this for me?", what the gate covers, and whether
                         # these two files still point at things that exist
 npm run features-check  # every tool belongs to a switch, and every switch does something
+npm run cron-check      # the cron evaluator, including both daylight-saving transitions
+npm run summary-check   # one real digest end to end: does it keep the decision, the deadline,
+                        # the links, and the right picture? (costs money, needs DATABASE_URL)
 npm run wapi-check      # the vendored SDK against the real API: envelopes, both error types,
                         # and one real send into a throwaway sandbox session (needs WAPI_PAT)
 npm run sticker-check   # real ffmpeg conversion + the SSRF guard (needs ffmpeg)

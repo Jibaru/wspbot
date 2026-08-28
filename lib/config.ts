@@ -109,6 +109,13 @@ export const config = {
    */
   visionModel: () => optional("BOT_VISION_MODEL") ?? optional("BOT_MODEL") ?? "gpt-5.6",
 
+  /**
+   * The model that writes a scheduled summary. A digest is read by people who were not there,
+   * so it is the one job here worth the top tier: it is infrequent, it runs on a long transcript,
+   * and a summary that drops the decision everyone needed is worse than no summary.
+   */
+  summaryModel: () => optional("BOT_SUMMARY_MODEL") ?? "gpt-5.6-sol",
+
   /** Reasoning depth. Low keeps a chat bot snappy; raise it if answers feel shallow. */
   effort: () => optional("BOT_EFFORT") ?? "low",
 

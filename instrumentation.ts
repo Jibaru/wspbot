@@ -14,4 +14,7 @@ export async function register() {
 
   const { startReminders } = await import("./lib/reminder-runner");
   startReminders();
+
+  const { startSummaries } = await import("./lib/summary-runner");
+  startSummaries();
 }

@@ -393,7 +393,7 @@ console.log("\nOAuth state (which chat a Notion connection belongs to):");
   const gates = (path: string): boolean => new RegExp(`^${pattern}$`).test(path);
 
   // Pages: every one of these must be behind the sign-in.
-  for (const path of ["/", "/features", "/limits", "/stickers", "/memory", "/reminders", "/usage"]) {
+  for (const path of ["/", "/features", "/limits", "/stickers", "/memory", "/reminders", "/usage", "/summaries"]) {
     check(`gates ${path}`, gates(path), true);
   }
   // Called by wapi and by Notion with no cookie; gating either breaks the bot silently.

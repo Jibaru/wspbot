@@ -196,6 +196,62 @@ const migrate = async (): Promise<void> => {
     create index if not exists tasks_chat_idx on tasks (chat, done, id);
 
     /*
+     * Scheduled summaries: read one group, post a digest into another on a cron.
+     *
+     * Not keyed on the source, so one group can have both a daily and a weekly digest. Each row
+     * carries its own watermark, so two schedules over the same group summarise their own
+     * windows rather than stealing each other's messages.
+     */
+    create table if not exists summary_schedules (
+      id               serial primary key,
+      source_chat      text        not null,
+      source_name      text,
+      destination_chat text        not null,
+      destination_name text,
+      -- Five-field cron, evaluated in BOT_TIMEZONE. See lib/cron.ts.
+      cron             text        not null,
+      enabled          boolean     not null default true,
+      -- Everything after this has not been summarised yet. Moved forward only on success, so a
+      -- failed run is retried at the next firing rather than silently skipping a day.
+      summarised_to    timestamptz,
+      -- The wall-clock minute this last fired, which is what stops a restart firing it twice.
+      last_minute      text,
+      last_run_at      timestamptz,
+      last_error       text,
+      created_at       timestamptz not null default now()
+    );
+    create index if not exists summary_schedules_source_idx
+      on summary_schedules (source_chat) where enabled;
+
+    /*
+     * Every message in a group being summarised — not just the ones tagging the bot. Written
+     * only for chats that are the source of an enabled schedule, and pruned on a timer.
+     *
+     * media_note is what an image actually showed, described once when it arrived. It cannot
+     * be done later: the decrypted URL dies after an hour, and a daily digest runs long after
+     * that. media_url is a re-upload, which does not expire, so a summary can still attach it.
+     */
+    create table if not exists logged_messages (
+      id          bigserial primary key,
+      chat        text        not null,
+      message_id  text        not null,
+      sender      text,
+      sender_name text,
+      at          timestamptz not null default now(),
+      -- text | image | video | audio | document | sticker | poll
+      kind        text        not null default 'text',
+      text        text        not null default '',
+      media_note  text,
+      media_url   text,
+      urls        text[]      not null default '{}',
+      created_at  timestamptz not null default now()
+    );
+    create index if not exists logged_messages_chat_at_idx on logged_messages (chat, at);
+    -- Deliveries retry, and the same message must not appear twice in a digest.
+    create unique index if not exists logged_messages_unique
+      on logged_messages (chat, message_id);
+
+    /*
      * Which abilities are switched off, set from the dashboard. Only deviations are stored:
      * no row means on, so a feature added in a later release arrives enabled without a
      * migration, and this stays a list of decisions somebody made rather than a mirror of

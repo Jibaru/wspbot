@@ -172,6 +172,18 @@ export const wapi = {
     return client().messages.react(key, emoji);
   },
 
+  /**
+   * Every group this session is in. Used by the dashboard to let someone pick a source and a
+   * destination by name rather than by pasting a JID.
+   */
+  groups(): Promise<{ jid: string; name: string }[]> {
+    return client()
+      .groups.list()
+      .then((all) =>
+        all.map((g) => ({ jid: g.jid, name: g.name || g.subject || g.jid })),
+      );
+  },
+
   /** Blue ticks. Best-effort — a failure here must never stop a reply. */
   async markRead(
     key: Parameters<WapiClient["messages"]["markRead"]>[0],

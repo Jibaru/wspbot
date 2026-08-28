@@ -23,6 +23,7 @@ import * as tasks from "./tasks";
 import * as sheets from "./sheets";
 import * as reminders from "./reminders";
 import * as features from "./features";
+import * as summaries from "./summaries";
 import { toVoiceNote, VOICE_NOTE_MIMETYPE, VOICE_NOTE_FILENAME } from "./audio";
 import { fetchDecrypted } from "./inbound-media";
 import { fetchMedia } from "./fetch-media";
@@ -123,6 +124,12 @@ const systemPrompt = async (turn: Turn, on: Set<string>): Promise<string> => {
    * the bot being broken rather than as the feature being off.
    */
   const notionOn = has("notion") && Boolean(config.notion());
+  /**
+   * Whether this room is being written down for a scheduled digest. The bot has to be able to
+   * answer that honestly: it is the one thing it does that people would reasonably object to
+   * not being told about, and "am I being recorded?" deserves a true answer.
+   */
+  const recorded = has("summaries") && (await summaries.recordedChats()).has(turn.chat);
   const quoted = has("quoted") ? turn.quoted : undefined;
   const source = has("stickers_make") ? stickerSource(turn) : undefined;
 
@@ -274,6 +281,12 @@ const systemPrompt = async (turn: Turn, on: Set<string>): Promise<string> => {
           "- When someone asks you to forget or drop something, call `forget` with the matching id.",
           "- The facts below are already in front of you. Answer from them directly — do not announce that you are checking your memory.",
           "- Facts marked (everywhere) are known in every chat, and survive restarts and redeploys. Save one that way — scope 'everywhere' — only when it holds no matter who is talking: a standing instruction about how you should behave, or something about you rather than about this room. Anything about the people here stays in this chat.",
+          "",
+        ]
+      : []),
+    ...(recorded
+      ? [
+          "Everything said in this chat is being recorded so that a scheduled summary can be written from it later, and posted into another group. If anyone asks whether you are recording, logging, reading or summarising this chat, say plainly that you are and what it is for. Never deny it. Do not bring it up unprompted.",
           "",
         ]
       : []),

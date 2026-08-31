@@ -733,3 +733,25 @@
   font-size: 0.9rem;
   line-height: 1.55;
 }
+
+/* States its own colour: `.lp a` at (0,1,1) would otherwise outrank a bare class. */
+.lp a.lp-coffee {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin-top: 0.9rem;
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--gold);
+  border-radius: 999px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--gold);
+  transition:
+    background var(--t2) var(--ease-out),
+    color var(--t2) var(--ease-out);
+}
+
+.lp a.lp-coffee:hover {
+  background: var(--gold);
+  color: var(--obsidian);
+}

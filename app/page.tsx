@@ -34,6 +34,7 @@ export const metadata: Metadata = {
 
 const SOURCE = "https://github.com/Jibaru/wspbot";
 const WAPI = "https://github.com/crafter-station/wapi";
+const COFFEE = "https://buymeacoffee.com/jibaru";
 
 /** Both halves are open. The bot is the interesting half; the gateway is the hard one. */
 const REPOS: { name: string; href: string; body: string }[] = [
@@ -244,9 +245,13 @@ export default function Landing() {
               <h3>Or help with the bill.</h3>
               <p>
                 Every answer is an OpenAI call and the whole thing sits on a VPS somebody pays
-                for. If you would like to chip in towards the credits, that is Jibaru&apos;s
-                personal Yape — entirely optional, and code is just as welcome as money.
+                for. If you would like to chip in towards the credits: the code is Jibaru&apos;s
+                personal Yape, and there is a coffee link for everywhere Yape does not reach.
+                Entirely optional, and code is just as welcome as money.
               </p>
+              <a className="lp-coffee" href={COFFEE} target="_blank" rel="noreferrer">
+                Buy me a coffee
+              </a>
             </div>
           </div>
         </section>

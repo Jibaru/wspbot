@@ -909,9 +909,13 @@ Both halves are open, and a star is the only thing either asks for:
 - ⭐ **[crafter-station/wapi](https://github.com/crafter-station/wapi)** — the WhatsApp gateway.
 
 Running it is not free: every answer is an OpenAI call, and the whole thing sits on a VPS somebody
-pays for. If you would like to help with the credits, the Yape code is on
-[the landing page](https://wspbot.crafter.run) and in [`public/yape.png`](public/yape.png). It is
-Jibaru's personal Yape, entirely optional, and code is just as welcome as money.
+pays for. If you would like to help with the credits:
+
+- ☕ **[buymeacoffee.com/jibaru](https://buymeacoffee.com/jibaru)** — from anywhere.
+- 📱 **Yape** — for Peru. The code is on [the landing page](https://wspbot.crafter.run), and in
+  [`public/yape.png`](public/yape.png).
+
+Entirely optional, and code is just as welcome as money.
 
 The bot knows all of this about itself. Ask it where its source is, or how wapi works, and it will
 tell you — and if you offer to help with the bill, it will send the code. It never brings any of

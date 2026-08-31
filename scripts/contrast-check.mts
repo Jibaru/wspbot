@@ -276,6 +276,14 @@ audit("app/landing.css", ".lp", [
     min: 4.5,
   },
   {
+    name: "buy-me-a-coffee link",
+    element: "a",
+    classes: ["lp-coffee"],
+    ancestors: [".lp", ".lp-section", ".lp-chip", "div"],
+    on: "--titanium",
+    min: 4.5,
+  },
+  {
     name: "footer text",
     element: "span",
     classes: [],

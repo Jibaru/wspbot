@@ -349,7 +349,7 @@ console.log("\nOAuth state (which chat a Notion connection belongs to):");
  */
 {
   console.log("\ndocumentation:");
-  const owned = /(?:^|[\s`(])((?:app|lib|scripts|public)\/[\w./-]*[\w/]|proxy\.ts|instrumentation\.ts|docker-compose\.yml|Dockerfile)/g;
+  const owned = /(?:^|[\s`("])((?:app|lib|scripts|public)\/[\w./-]*[\w/]|proxy\.ts|instrumentation\.ts|docker-compose\.yml|Dockerfile)/g;
 
   for (const doc of ["AGENTS.md", "README.md"]) {
     const text = readFileSync(new URL(`../${doc}`, import.meta.url), "utf8");

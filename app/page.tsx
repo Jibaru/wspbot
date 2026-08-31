@@ -1,7 +1,34 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { FEATURES, ALWAYS } from "@/lib/features";
-import { CrafterMark, CrafterLockup } from "./crafter-mark";
+import { CrafterLockup } from "./crafter-mark";
+
+/**
+ * wspbot's own mark — the same speech bubble as the favicon and the app icon, drawn inline.
+ *
+ * Without its tile: the icon carries an obsidian tile so it reads as an app icon on someone
+ * else's home screen, and this page is already obsidian, so the tile would only be a square of
+ * the background sitting inside the background.
+ */
+function AppIcon({ size = 22 }: { size?: number }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width={size}
+      height={size}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      role="img"
+      aria-label="wspbot"
+      style={{ display: "block", flex: "none", color: "var(--gold)" }}
+    >
+      <path d="M6 4H18A3 3 0 0 1 21 7V13A3 3 0 0 1 18 16H14L9 20V16H6A3 3 0 0 1 3 13V7A3 3 0 0 1 6 4Z" />
+    </svg>
+  );
+}
 import "./landing.css";
 
 /**
@@ -105,7 +132,7 @@ export default function Landing() {
       <div className="lp-wrap">
         <header className="lp-nav">
           <span className="lp-mark">
-            <CrafterMark id="nav" size={22} />
+            <AppIcon size={22} />
             wspbot<span className="lp-dot">.</span>
           </span>
           <nav>
@@ -150,7 +177,7 @@ export default function Landing() {
           <div className="lp-thread" aria-label="An example conversation">
             <div className="lp-thread-head">
               <span className="lp-avatar">
-                <CrafterMark id="avatar" size={17} />
+                <AppIcon size={16} />
               </span>
               Deploy · 6 members
             </div>

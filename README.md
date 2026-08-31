@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="public/icon-192.png" width="76" height="76" alt="">
+
 # wspbot
 
 **Tag it. It answers.**

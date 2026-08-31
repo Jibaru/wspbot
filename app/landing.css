@@ -634,3 +634,102 @@
     transform: none;
   }
 }
+
+/* ── open source, and chipping in ────────────────────────────────────── */
+
+.lp-repos {
+  list-style: none;
+  margin: 0 0 2.5rem;
+  padding: 0;
+  display: grid;
+  gap: 1px;
+  background: var(--edge);
+  border: 1px solid var(--edge);
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+@media (min-width: 46rem) {
+  .lp-repos {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.lp-repos a {
+  display: grid;
+  gap: 0.4rem;
+  align-content: start;
+  height: 100%;
+  padding: 1.4rem 1.5rem;
+  background: var(--titanium);
+  transition: background var(--t2) var(--ease-out);
+}
+
+.lp-repos a:hover {
+  background: var(--surface);
+}
+
+.lp-repo-name {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 0.92rem;
+  font-weight: 500;
+}
+
+/* The star nudges out on hover — a hint at what the link is for, not decoration. */
+.lp-star {
+  color: var(--gold);
+  transition: transform var(--t3) var(--ease-back);
+}
+
+.lp-repos a:hover .lp-star {
+  transform: translate(2px, -2px) scale(1.15);
+}
+
+.lp-repos a > span:last-child {
+  color: var(--muted);
+  font-size: 0.88rem;
+  line-height: 1.55;
+}
+
+.lp-chip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1.5rem;
+  padding: 1.4rem;
+  border: 1px solid var(--edge);
+  border-radius: 14px;
+  background: var(--titanium);
+}
+
+/* The code has to stay square and unfiltered: it is scanned, not looked at. */
+.lp-chip img {
+  width: 148px;
+  height: 148px;
+  border-radius: 10px;
+  background: #fff;
+  padding: 6px;
+  flex: none;
+}
+
+.lp-chip div {
+  flex: 1;
+  min-width: 16rem;
+}
+
+.lp-chip h3 {
+  margin: 0 0 0.4rem;
+  font-size: 1.05rem;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+
+.lp-chip p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.55;
+}

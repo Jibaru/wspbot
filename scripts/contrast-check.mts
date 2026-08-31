@@ -260,6 +260,22 @@ audit("app/landing.css", ".lp", [
     min: 4.5,
   },
   {
+    name: "repo card body",
+    element: "span",
+    classes: [],
+    ancestors: [".lp", ".lp-section", ".lp-repos", "li", "a"],
+    on: "--titanium",
+    min: 4.5,
+  },
+  {
+    name: "chip-in copy",
+    element: "p",
+    classes: [],
+    ancestors: [".lp", ".lp-section", ".lp-chip", "div"],
+    on: "--titanium",
+    min: 4.5,
+  },
+  {
     name: "footer text",
     element: "span",
     classes: [],

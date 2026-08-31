@@ -33,6 +33,21 @@ export const metadata: Metadata = {
 };
 
 const SOURCE = "https://github.com/Jibaru/wspbot";
+const WAPI = "https://github.com/crafter-station/wapi";
+
+/** Both halves are open. The bot is the interesting half; the gateway is the hard one. */
+const REPOS: { name: string; href: string; body: string }[] = [
+  {
+    name: "Jibaru/wspbot",
+    href: SOURCE,
+    body: "This bot. The webhook, the turn, every tool, the dashboard and the checks that keep it honest.",
+  },
+  {
+    name: "crafter-station/wapi",
+    href: WAPI,
+    body: "WhatsApp over plain HTTP, self-hosted. Meta's Cloud API only covers business messaging, so reaching an ordinary group chat means driving a real WhatsApp client — which is what this does, behind a stable REST interface.",
+  },
+];
 
 /** The conversation in the hero. Every line is something the bot genuinely does. */
 const THREAD: { who?: string; bot?: boolean; digest?: boolean; body: React.ReactNode }[] = [
@@ -195,6 +210,44 @@ export default function Landing() {
             <b>the model</b>
             {"  ──▶  back to the chat\n"}
             {"                            └─▶  Postgres · ffmpeg · web search"}
+          </div>
+        </section>
+
+        <section className="lp-section lp-reveal">
+          <p className="lp-kicker">Open source</p>
+          <h2 className="lp-h2">Both halves are yours to read.</h2>
+          <p className="lp-lead">
+            Run your own, take a piece, or send a change. A star is the only thing either project
+            asks for.
+          </p>
+          <ul className="lp-repos">
+            {REPOS.map((r) => (
+              <li key={r.name}>
+                <a href={r.href} target="_blank" rel="noreferrer">
+                  <span className="lp-repo-name">
+                    {r.name}
+                    <span className="lp-star" aria-hidden="true">
+                      ★
+                    </span>
+                  </span>
+                  <span>{r.body}</span>
+                </a>
+              </li>
+            ))}
+          </ul>
+
+          <div className="lp-chip">
+            {/* Plain img: one static asset, and next/image would only add a proxy in front of it. */}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/yape.png" alt="Yape QR code for Jibaru" width={148} height={148} />
+            <div>
+              <h3>Or help with the bill.</h3>
+              <p>
+                Every answer is an OpenAI call and the whole thing sits on a VPS somebody pays
+                for. If you would like to chip in towards the credits, that is Jibaru&apos;s
+                personal Yape — entirely optional, and code is just as welcome as money.
+              </p>
+            </div>
           </div>
         </section>
 

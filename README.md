@@ -13,6 +13,9 @@ everything you missed.
 
 `Next.js 16` · `TypeScript` · `Postgres` · `OpenAI` · `ffmpeg` · self-hosted
 
+**Open source, both halves.** ⭐ [`Jibaru/wspbot`](https://github.com/Jibaru/wspbot) — this bot ·
+⭐ [`crafter-station/wapi`](https://github.com/crafter-station/wapi) — the WhatsApp gateway it runs on
+
 </div>
 
 ---
@@ -46,6 +49,8 @@ bot   → Done.
 **What it can do** — [Put things in the chat](#what-it-can-put-in-the-chat) · [Stickers](#stickers) · [Memory](#memory) · [The checklist](#the-checklist) · [Reactions](#reactions) · [Scheduled reminders](#scheduled-reminders) · [Scheduled summaries](#scheduled-summaries) · [Notion](#notion) · [Google Sheets](#google-sheets) · [Knows what it is](#what-it-knows-about-itself)
 
 **Keep it honest** — [Rate limiting](#rate-limiting) · [Usage and cost](#usage-and-cost) · [Moving context between groups](#moving-context-between-groups)
+
+**Chip in** — [What wapi is](#what-wapi-is) · [Open source, and the bill](#open-source-and-the-bill)
 
 ## Architecture
 
@@ -824,6 +829,34 @@ wrong credential type against a 401 for a bad one, and one genuine send — into
 it creates and then deletes, whose number sits under country code 999, which is unassigned and
 cannot route anywhere. Nothing reaches a real chat.
 
+## What wapi is
+
+Everything WhatsApp-shaped in this app arrives through
+[**wapi**](https://github.com/crafter-station/wapi) — WhatsApp over plain HTTP, self-hosted, and
+open source.
+
+It exists because Meta's Cloud API covers *business* messaging, not the group chats and personal
+threads people actually use. Reaching those means driving a real WhatsApp client, and wapi does
+that behind a stable REST surface that is wire-compatible with WasenderAPI.
+
+Four services, and the split is the interesting part:
+
+| | |
+| --- | --- |
+| **api** | Stateless. Validates a request, allocates a message id, answers immediately. |
+| **gateway** | The only stateful piece — it holds the actual WhatsApp socket, and exactly one process may own a session. |
+| **webhook-worker** | Delivers events outward with retries, backoff and a dead-letter queue. |
+| **web** | The dashboard: link a number, watch its QR, browse contacts and groups, watch deliveries land. |
+
+Postgres, Redis and object storage sit underneath. Two consequences reach this app directly:
+**sending is asynchronous** — the API answers `in_progress` and the gateway puts it on the wire
+afterwards, so a send is not safely retryable — and **session credentials live in Postgres rather
+than on disk**, which is why a redeploy reconnects instead of asking anyone to scan a QR again.
+
+There is also a **sandbox**: a fake number on a fake WhatsApp that pairs itself and goes through
+the same routes as a real session. `npm run wapi-check` uses one to prove a real send without
+touching a real chat.
+
 ## Notes on the wapi integration
 
 The client is the **official wapi TypeScript SDK**, vendored into `lib/wapi-sdk/`. It is not
@@ -866,6 +899,23 @@ Details that still cost real debugging time:
   wasn't delivered, so nothing here retries a send.
 
 Background on all of it: `.agents/skills/wapi-nextjs/references/api-notes.md`.
+
+## Open source, and the bill
+
+Both halves are open, and a star is the only thing either asks for:
+
+- ⭐ **[Jibaru/wspbot](https://github.com/Jibaru/wspbot)** — this bot. The webhook, the turn,
+  every tool, the dashboard, and the checks that keep it honest.
+- ⭐ **[crafter-station/wapi](https://github.com/crafter-station/wapi)** — the WhatsApp gateway.
+
+Running it is not free: every answer is an OpenAI call, and the whole thing sits on a VPS somebody
+pays for. If you would like to help with the credits, the Yape code is on
+[the landing page](https://wspbot.crafter.run) and in [`public/yape.png`](public/yape.png). It is
+Jibaru's personal Yape, entirely optional, and code is just as welcome as money.
+
+The bot knows all of this about itself. Ask it where its source is, or how wapi works, and it will
+tell you — and if you offer to help with the bill, it will send the code. It never brings any of
+it up unprompted.
 
 ## Layout
 

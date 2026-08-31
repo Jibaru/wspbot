@@ -400,6 +400,22 @@ audit("app/globals.css", ":root", [
     min: 4.5,
   },
   {
+    name: "move page — item label",
+    element: "span",
+    classes: [],
+    ancestors: ["body", "main", ".panel", "form", "ul.rows", "li", "label.pick"],
+    on: "--panel",
+    min: 4.5,
+  },
+  {
+    name: "move page — mode choice",
+    element: "label",
+    classes: [],
+    ancestors: ["body", "main", ".panel", "form", ".move-controls", "fieldset.modes"],
+    on: "--panel",
+    min: 4.5,
+  },
+  {
     name: "notice panel",
     element: "div",
     classes: ["panel", "notice"],

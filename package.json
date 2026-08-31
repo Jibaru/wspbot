@@ -12,6 +12,7 @@
     "cron-check": "tsx scripts/cron-check.mts",
     "contrast-check": "tsx scripts/contrast-check.mts",
     "summary-check": "tsx --conditions=react-server --env-file=.env scripts/summary-check.mts",
+    "transfer-check": "tsx --conditions=react-server --env-file=.env scripts/transfer-check.mts",
     "features-check": "tsx --conditions=react-server scripts/features-check.mts",
     "wapi-check": "tsx --conditions=react-server --env-file=.env scripts/wapi-check.mts",
     "vendor-wapi-sdk": "node scripts/vendor-wapi-sdk.mjs",

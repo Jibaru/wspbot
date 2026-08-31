@@ -33,7 +33,7 @@ bot   → Done.
 | **Abilities** | 18 switchable features over 32 model tools, plus 3 that are always on |
 | **Storage** | Postgres, 13 tables — memory, history, stickers, schedules, spend |
 | **Runs on** | A Dokploy VPS behind Traefik, alongside the WhatsApp gateway it talks to |
-| **Guarded by** | 12 check scripts that exercise the real thing rather than asserting about it |
+| **Guarded by** | 13 check scripts that exercise the real thing rather than asserting about it |
 
 ## Contents
 
@@ -45,7 +45,7 @@ bot   → Done.
 
 **What it can do** — [Put things in the chat](#what-it-can-put-in-the-chat) · [Stickers](#stickers) · [Memory](#memory) · [The checklist](#the-checklist) · [Reactions](#reactions) · [Scheduled reminders](#scheduled-reminders) · [Scheduled summaries](#scheduled-summaries) · [Notion](#notion) · [Google Sheets](#google-sheets) · [Knows what it is](#what-it-knows-about-itself)
 
-**Keep it honest** — [Rate limiting](#rate-limiting) · [Usage and cost](#usage-and-cost)
+**Keep it honest** — [Rate limiting](#rate-limiting) · [Usage and cost](#usage-and-cost) · [Moving context between groups](#moving-context-between-groups)
 
 ## Architecture
 
@@ -163,7 +163,7 @@ Same look as the landing page — forged gold on obsidian, Geist throughout — 
 same product. There is one theme rather than a light and a dark: the brand's resting state is
 obsidian, and a dashboard read beside the front door is better off matching it.
 
-Eight sections under `/dashboard`, each behind the sign-in:
+Nine sections under `/dashboard`, each behind the sign-in:
 
 | | |
 | --- | --- |
@@ -174,6 +174,7 @@ Eight sections under `/dashboard`, each behind the sign-in:
 | `/dashboard/memory` | What it has been told to remember |
 | `/dashboard/reminders` | Everything scheduled, across every chat |
 | `/dashboard/summaries` | Scheduled digests of a group |
+| `/dashboard/move` | Move a group's context into another group |
 | `/dashboard/usage` | Tokens and spend, broken down by model and kind |
 
 **A switch is real, not cosmetic.** Turning something off withdraws its tools *and* deletes the
@@ -614,6 +615,38 @@ Each schedule keeps a watermark and summarises only what has happened since its 
 run, so nothing is covered twice and a failed run is retried at the next firing rather than
 skipping a day.
 
+## Moving context between groups
+
+Groups get remade — a new one for the same team, a project room that supersedes a channel, a chat
+somebody had to recreate. Everything the bot had learned stayed in the old one, and the only way
+across was to type it all in again.
+
+`/dashboard/move` carries the curated part over, **one item at a time**. Pick the source group and
+it lists what it has; tick the facts, checklist items, reminders and Notion connection worth
+keeping; pick the destination; move or copy.
+
+| Moves | Notes |
+| --- | --- |
+| Remembered facts | Per fact. Global facts are excluded — they belong to no group. |
+| Checklist items | Per item, done or open. |
+| Scheduled reminders | Per person. Refused if that person already has one waiting there. |
+| Notion connection | **Moved, never copied.** |
+
+**There is no tool for this**, deliberately, and for the same reason there is none for rate
+limits: an ability the bot has is an ability anyone in a chat can ask it to use, and "move that
+group's notes into this one" is not a request the bot is in any position to judge. Whoever holds
+the sign-in decides.
+
+Two refusals are worth knowing about. A reminder is keyed on the pair of chat and person, so
+moving one into a group where that person already has something waiting would silently replace
+it — the page refuses instead and says so. And a Notion connection is only ever moved: somebody
+authorised that workspace for one conversation, and copying the grant to a second room while
+leaving it in the first turns one consent into two, which is not something a tick-box should do.
+
+What does not move is what was recorded rather than curated — the conversation history and the
+logged transcript — plus usage, quotas, and the sticker library, which every chat shares already.
+The page lists all of it, so "everything moved" and "everything I chose moved" cannot be confused.
+
 ## Rate limiting
 
 One person may set the bot working **once a minute** by default. Over that, they get a short
@@ -763,6 +796,7 @@ npm run wapi-check      # the vendored SDK against the real wapi API (needs WAPI
 npm run cron-check      # the cron evaluator, including both daylight-saving transitions
 npm run contrast-check  # what the landing page text actually resolves to, and its contrast
 npm run summary-check   # one real digest end to end (costs money, needs DATABASE_URL)
+npm run transfer-check  # moving context between two throwaway groups (needs DATABASE_URL)
 npm run sticker-check   # real ffmpeg conversion: 512x512, animated, under size ceilings
 npm run voice-check     # voice notes really are Ogg/Opus mono 48kHz, per ffprobe
 npm run video-check     # video really is H.264/yuv420p/AAC in MP4, per ffprobe
@@ -848,6 +882,7 @@ lib/memory.ts                    facts, scoped per chat or global
 lib/tasks.ts                     the per-chat checklist
 lib/reminders.ts                 scheduled work; lib/reminder-runner.ts fires it
 lib/rate-limit.ts                per-person quotas, checked before anything costs money
+lib/transfer.ts                  moving a group's context into another group
 lib/summaries.ts                 scheduled digests: schedules, the message log, the transcript
 lib/summary-recorder.ts          writing down a recorded group, describing its pictures
 lib/summary-runner.ts            composing a digest and posting it

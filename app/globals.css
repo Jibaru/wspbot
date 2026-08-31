@@ -653,3 +653,77 @@ a:hover {
 .meta.bad {
   color: var(--warn);
 }
+
+/* ── moving context between groups ───────────────────────────────────── */
+
+/* The whole row is the target: a checkbox alone is a small thing to hit on a phone. */
+label.pick {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.7rem;
+  cursor: pointer;
+  min-width: 0;
+}
+
+label.pick input[type="checkbox"] {
+  margin: 0.25rem 0 0;
+  accent-color: var(--accent);
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
+
+label.pick > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.move-controls {
+  display: grid;
+  gap: 0.5rem;
+  margin-top: 1.4rem;
+  padding-top: 1.2rem;
+  border-top: 1px solid var(--line);
+  max-width: 26rem;
+}
+
+.move-controls label {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.move-controls select {
+  font: inherit;
+  color-scheme: dark;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--bg);
+  color: var(--text);
+}
+
+fieldset.modes {
+  border: 0;
+  margin: 0.4rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.35rem;
+}
+
+fieldset.modes label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--text);
+  font-size: 0.88rem;
+  cursor: pointer;
+}
+
+fieldset.modes input[type="radio"] {
+  accent-color: var(--accent);
+}
+
+.move-controls button[type="submit"] {
+  justify-self: start;
+  margin-top: 0.6rem;
+}

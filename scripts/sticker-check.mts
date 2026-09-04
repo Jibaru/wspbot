@@ -94,8 +94,24 @@ const main = async () => {
     ["::1", true],
     ["fd00::1", true],
     ["::ffff:10.0.0.1", true], // IPv4 wearing an IPv6 hat
+    /*
+     * The hex spellings, which is where this guard was actually wrong.
+     * `new URL("http://[::ffff:169.254.169.254]/")` rewrites the host to `::ffff:a9fe:a9fe` —
+     * the same address, a spelling the old dotted-quad pattern did not match, so the metadata
+     * endpoint read as public internet. Every way of writing an IPv4 address inside an IPv6 one
+     * has to land on the same answer.
+     */
+    ["::ffff:a9fe:a9fe", true], // 169.254.169.254, as a URL rewrites it
+    ["::ffff:0a00:0001", true], // 10.0.0.1, likewise
+    ["::a9fe:a9fe", true], // the deprecated IPv4-compatible form
+    ["64:ff9b::a9fe:a9fe", true], // and the NAT64 well-known prefix
+    ["ff02::1", true], // multicast
+    ["fe80::1", true], // link-local
+    ["not-an-address", true], // unparseable is refused, never allowed through
     ["8.8.8.8", false],
     ["1.1.1.1", false],
+    ["2606:4700:4700::1111", false],
+    ["::ffff:8.8.8.8", false], // a public IPv4 in an IPv6 hat is still public
   ] as const) {
     check(`${ip} blocked=${blocked}`, isPrivateAddress(ip), blocked);
   }
@@ -107,6 +123,7 @@ const main = async () => {
     "http://localhost/",
     "file:///etc/passwd",
     "http://[::1]/",
+    "http://[::ffff:169.254.169.254]/", // normalises to hex before the guard ever sees it
   ]) {
     let refused = false;
     try {

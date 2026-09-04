@@ -17,6 +17,11 @@
  *    with width and height attributes reserves its box whether or not the bytes ever arrive, so
  *    a height comparison passes while the request goes out regardless.
  *
+ * The second half checks the opposite function. `capture` takes a picture of a real web page, so
+ * it is the one thing here that *must* reach the internet — which makes it the SSRF hole the
+ * renderer was written not to have. The refusals are asserted without a network; the one real
+ * page load is skipped if there is no way out.
+ *
  * Needs a Chromium. In Docker that is /usr/bin/chromium; anywhere else, point CHROMIUM_PATH at
  * one — a local Chrome will do.
  *
@@ -25,7 +30,7 @@
 import { existsSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { render } from "../lib/render-html.js";
+import { render, capture, CaptureError } from "../lib/render-html.js";
 
 let failures = 0;
 const check = (label: string, pass: boolean, detail = "") => {
@@ -125,6 +130,51 @@ const narrow = await render("<div>x</div>", 10);
 check("and an absurd narrow one too", narrow.width === 320, `— ${narrow.width}`);
 const long = await render(`<div>${"<p>line</p>".repeat(600)}</div>`, 400);
 check("a runaway page is capped", long.height === 4000, `— ${long.height}`);
+
+console.log("\ncapturing a page — what it refuses:");
+const refused = async (url: string): Promise<string> => {
+  try {
+    await capture(url);
+    return "";
+  } catch (err) {
+    return err instanceof CaptureError ? err.message : `wrong error type: ${String(err)}`;
+  }
+};
+
+/*
+ * Each of these is a request that must never leave. They are checked through `capture` rather
+ * than against the guard directly, because the bug worth catching is the guard being wired up
+ * wrongly, not the guard being wrong — `sticker-check` already covers the ranges themselves.
+ */
+check("the metadata address", (await refused("http://169.254.169.254/latest/meta-data/")).includes("private network"));
+check("loopback by name", (await refused("http://localhost:3000/")).includes("private network"));
+check("loopback by address", (await refused("http://127.0.0.1/")).includes("private network"));
+check("a private range", (await refused("http://10.0.0.1/admin")).includes("private network"));
+check("IPv4 wearing an IPv6 hat", (await refused("http://[::ffff:169.254.169.254]/")).includes("private network"));
+check("a file:// URL", (await refused("file:///etc/passwd")).length > 0);
+check("a name that does not resolve", (await refused("https://not-a-real-host.invalid/")).includes("resolve"));
+
+const online = await fetch("https://example.com/", { signal: AbortSignal.timeout(8000) })
+  .then((r) => r.ok)
+  .catch(() => false);
+
+if (!online) {
+  console.log("  SKIP the real page load — no way out to the internet from here");
+} else {
+  console.log("\nand what it does:");
+  const page = await capture("example.com");
+  const shot = readPng(page.png);
+  check("a bare hostname is treated as https", page.url === "https://example.com/");
+  check("it comes back a PNG", shot.signature);
+  check("at the viewport size, 2x", shot.width === 2000, `— ${shot.width}`);
+  check("and it read the page", /example/i.test(page.title), `— "${page.title}"`);
+  writeFileSync(join(tmpdir(), "capture-check.png"), page.png);
+
+  const whole = await capture("https://example.com/", true);
+  const wholeShot = readPng(whole.png);
+  // A full-page shot is deliberately 1x: at 2x a long site is a picture too large to send.
+  check("a full-page shot is 1x", wholeShot.width === 1000, `— ${wholeShot.width}`);
+}
 
 const out = join(tmpdir(), "render-check.png");
 writeFileSync(out, card.png);

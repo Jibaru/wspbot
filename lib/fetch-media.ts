@@ -43,14 +43,78 @@ const isPrivateIPv4 = (ip: string): boolean => {
   return false;
 };
 
+/**
+ * The eight 16-bit groups of an IPv6 address, or null if it does not parse.
+ *
+ * Written out rather than pattern-matched because the textual forms of the same address are not
+ * interchangeable: `::ffff:169.254.169.254` and `::ffff:a9fe:a9fe` are one address, and the
+ * WHATWG URL parser rewrites the first into the second. A check that matched the dotted spelling
+ * saw a link-local address; the same check saw the hex spelling as public internet.
+ */
+const groupsOf = (ip: string): number[] | null => {
+  let text = ip.toLowerCase();
+
+  // A trailing dotted quad is the low 32 bits written the other way round.
+  const dotted = /(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/.exec(text);
+  if (dotted?.[1]) {
+    const octets = dotted[1].split(".").map(Number);
+    if (octets.length !== 4 || octets.some((n) => Number.isNaN(n) || n > 255)) return null;
+    const [a = 0, b = 0, c = 0, d = 0] = octets;
+    text = text.slice(0, dotted.index) + ((a << 8) | b).toString(16) + ":" + ((c << 8) | d).toString(16);
+  }
+
+  const halves = text.split("::");
+  if (halves.length > 2) return null;
+  const parse = (part: string): number[] | null => {
+    if (part === "") return [];
+    const out: number[] = [];
+    for (const piece of part.split(":")) {
+      if (!/^[0-9a-f]{1,4}$/.test(piece)) return null;
+      out.push(parseInt(piece, 16));
+    }
+    return out;
+  };
+
+  const head = parse(halves[0] ?? "");
+  const tail = halves.length === 2 ? parse(halves[1] ?? "") : [];
+  if (!head || !tail) return null;
+
+  if (halves.length === 1) return head.length === 8 ? head : null;
+  const missing = 8 - head.length - tail.length;
+  if (missing < 1) return null;
+  return [...head, ...Array(missing).fill(0), ...tail];
+};
+
 const isPrivateIPv6 = (ip: string): boolean => {
-  const v = ip.toLowerCase();
-  if (v === "::" || v === "::1") return true;
-  if (v.startsWith("fc") || v.startsWith("fd")) return true; // unique local
-  if (v.startsWith("fe80")) return true; // link-local
-  // IPv4 mapped (::ffff:10.0.0.1) is just IPv4 wearing a hat.
-  const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/.exec(v);
-  if (mapped?.[1]) return isPrivateIPv4(mapped[1]);
+  const g = groupsOf(ip);
+  // Unparseable is refused rather than allowed: this decision only ever gates outbound requests.
+  if (!g) return true;
+
+  const [g0 = 0, g1 = 0, g2 = 0, g3 = 0, g4 = 0, g5 = 0, g6 = 0, g7 = 0] = g;
+
+  if (g.every((n) => n === 0)) return true; // ::
+  if (g.slice(0, 7).every((n) => n === 0) && g7 === 1) return true; // ::1
+
+  /*
+   * Anything carrying an IPv4 address in its low 32 bits is that IPv4 address as far as a
+   * connection is concerned — mapped (::ffff:0:0/96), the deprecated compatible form, and the
+   * NAT64 well-known prefix 64:ff9b::/96 alike. Each is a way to spell 169.254.169.254.
+   */
+  const embedded = () => {
+    const [a, b] = [g6 >> 8, g6 & 0xff];
+    const [c, d] = [g7 >> 8, g7 & 0xff];
+    return isPrivateIPv4(`${a}.${b}.${c}.${d}`);
+  };
+  const zeroTop = g0 === 0 && g1 === 0 && g2 === 0 && g3 === 0 && g4 === 0;
+  if (zeroTop && (g5 === 0xffff || g5 === 0)) return embedded();
+  if (g0 === 0x0064 && g1 === 0xff9b && g2 === 0 && g3 === 0 && g4 === 0 && g5 === 0) {
+    return embedded();
+  }
+
+  if ((g0 & 0xfe00) === 0xfc00) return true; // fc00::/7 unique local
+  if ((g0 & 0xffc0) === 0xfe80) return true; // fe80::/10 link-local
+  if ((g0 & 0xff00) === 0xff00) return true; // ff00::/8 multicast
+
   return false;
 };
 
@@ -62,8 +126,11 @@ export const isPrivateAddress = (ip: string): boolean =>
  *
  * Every address the name resolves to is checked, not just the first — a host that returns one
  * public and one private address must not be usable.
+ *
+ * Exported because the screenshot browser needs exactly this decision for every URL it is about
+ * to open, and a second implementation of "is this address safe" is a second thing to get wrong.
  */
-const assertPublic = async (url: URL): Promise<void> => {
+export const assertPublic = async (url: URL): Promise<void> => {
   if (url.protocol !== "http:" && url.protocol !== "https:") {
     throw new FetchMediaError(`refusing to fetch a ${url.protocol} URL`);
   }

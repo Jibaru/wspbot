@@ -211,6 +211,14 @@ export const FEATURES: Feature[] = [
     tools: ["render_html"],
   },
   {
+    key: "screenshot",
+    title: "Takes a picture of a web page",
+    detail:
+      "Give it a link and it opens the page in a real browser and sends back a screenshot — the top of it, or the whole thing. It never opens an address inside the private network, and it carries none of the bot's own logins.",
+    claim: "screenshot a web page you link",
+    tools: ["screenshot_page"],
+  },
+  {
     key: "roadmap",
     title: "Takes votes on what to build next",
     detail:

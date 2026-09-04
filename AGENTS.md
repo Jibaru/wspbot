@@ -283,6 +283,21 @@ like a simplification opportunity.
 - **One render at a time.** Chromium spikes a couple of hundred megabytes and this box also runs
   Postgres and the wapi stack. The promise queue in `lib/render-html.ts` is not tidiness; two
   concurrent renders is how a WhatsApp bot causes an OOM kill somewhere else.
+- **`--single-process` crashes on a real page load.** It halves the memory and it survives
+  `setContent` with no network perfectly, so it looked correct right up until the first website
+  was captured: `Session closed` mid-screenshot, every time, on anything that navigates and runs
+  JavaScript. Serialising is what bounds the memory instead.
+- **`capture` reaches the internet, and that is why it is not `render` with a flag.** They have
+  opposite network stances and must not become one path with a boolean deciding whether the SSRF
+  guard runs. `capture` applies `assertPublic` to the page *and every subresource* — a public
+  page can pull an `<img>` from `169.254.169.254` — and then re-checks the address Chromium
+  actually reached, off `response.remoteAddress()`. That second check is the only thing that sees
+  DNS rebinding: Chromium resolves the name itself, separately, after the first check looked.
+- **`new URL()` rewrites an IPv6 host, and it broke the SSRF guard.**
+  `http://[::ffff:169.254.169.254]/` normalises to `::ffff:a9fe:a9fe`, so a pattern matching the
+  dotted spelling passed the metadata endpoint through as public — in every feature taking a URL,
+  stickers included. `isPrivateIPv6` now expands the address into eight groups; every embedded
+  form (mapped, compatible, NAT64) has to reach the same answer, and `sticker-check` names each.
 - **Groups only, and only when tagged.** DMs are ignored by default (`BOT_REPLY_TO_DMS`).
   Stickers are the sole exception: collected untagged, silently, never answered.
 

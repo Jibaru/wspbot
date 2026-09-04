@@ -26,7 +26,7 @@ import * as features from "./features";
 import * as summaries from "./summaries";
 import * as supporters from "./supporters";
 import * as roadmap from "./roadmap";
-import { render as renderHtml } from "./render-html";
+import { render as renderHtml, capture } from "./render-html";
 import { toVoiceNote, VOICE_NOTE_MIMETYPE, VOICE_NOTE_FILENAME } from "./audio";
 import { fetchDecrypted } from "./inbound-media";
 import { fetchMedia } from "./fetch-media";
@@ -196,6 +196,11 @@ const systemPrompt = async (turn: Turn, on: Set<string>): Promise<string> => {
       ? [
           "- `render_html` lays something out in HTML and sends it as a picture. Reach for it whenever the meaning is in the layout — a table, a comparison, a schedule, a receipt, a scoreboard — because WhatsApp shows none of that as text, and a table typed as plain text is unreadable on a phone. Also use it when somebody asks to see something as an image, or to render something you already wrote out.",
           "- Nothing in that HTML is fetched: no external stylesheet, font or image will load. Inline everything and use ordinary system fonts. Emoji work.",
+        ]
+      : []),
+    ...(has("screenshot")
+      ? [
+          "- `screenshot_page` opens a link in a real browser and sends a picture of it. Use it when somebody wants to *see* a page rather than read about it. It signs in nowhere, so anything behind a login comes back as the login screen, and it refuses any address inside a private network.",
         ]
       : []),
     ...(has("usage_report")
@@ -1128,6 +1133,44 @@ const toolsFor = (turn: Turn, sent: string[]) => ({
         const why = err instanceof Error ? err.message : String(err);
         console.error("[render] failed:", why);
         return `Could not render that: ${why}. If it referenced anything by URL, that is why — nothing is fetched. Try again with everything inline.`;
+      }
+    },
+  }),
+
+  screenshot_page: tool({
+    description:
+      "Open a web page in a real browser and send a picture of it to the chat. For when somebody links something and wants to see it, or asks what a site looks like. It cannot sign in anywhere, so a page behind a login comes back as the login screen.",
+    inputSchema: z.object({
+      url: z.string().describe("The page to open. Must be a public http(s) address."),
+      fullPage: z
+        .boolean()
+        .optional()
+        .describe(
+          "True for the entire page top to bottom, which on a long site is a tall strip. Leave it out for what fits on screen, which is usually what people mean.",
+        ),
+      caption: z.string().optional().describe("One short line to send with it, if it needs one."),
+    }),
+    execute: async ({ url, fullPage, caption }) => {
+      try {
+        const shot = await capture(url, fullPage ?? false);
+
+        const hosted = await wapi.upload({
+          base64: shot.png.toString("base64"),
+          mimetype: "image/png",
+          fileName: "page.png",
+        });
+        await wapi.send({
+          to: turn.chat,
+          imageUrl: hosted,
+          ...(caption ? { text: caption } : {}),
+        });
+
+        sent.push("an image");
+        return `Sent a picture of ${shot.url}${shot.title ? ` — "${shot.title}"` : ""}. Do not describe what is in it; they can see it.`;
+      } catch (err) {
+        const why = err instanceof Error ? err.message : String(err);
+        console.error("[capture] failed:", why);
+        return `Could not take that picture: ${why}`;
       }
     },
   }),

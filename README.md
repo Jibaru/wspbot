@@ -35,7 +35,7 @@ bot   → Done.
 |  |  |
 | --- | --- |
 | **What it is** | One Next.js container: a webhook that answers WhatsApp, and a dashboard that decides what it may do |
-| **Abilities** | 21 switchable features over 37 model tools, plus 3 that are always on |
+| **Abilities** | 22 switchable features over 38 model tools, plus 3 that are always on |
 | **Storage** | Postgres, 17 tables — memory, history, stickers, schedules, supporters, roadmap, spend |
 | **Runs on** | A Dokploy VPS behind Traefik, alongside the WhatsApp gateway it talks to |
 | **Guarded by** | 16 check scripts that exercise the real thing rather than asserting about it |
@@ -48,7 +48,7 @@ bot   → Done.
 
 **Use it** — [The landing page](#the-landing-page) · [The dashboard](#the-dashboard) · [Signing in](#signing-in) · [When it replies](#when-it-replies)
 
-**What it can do** — [Put things in the chat](#what-it-can-put-in-the-chat) · [Stickers](#stickers) · [Rendering HTML](#rendering-html) · [Memory](#memory) · [The checklist](#the-checklist) · [Reactions](#reactions) · [Scheduled reminders](#scheduled-reminders) · [Scheduled summaries](#scheduled-summaries) · [Notion](#notion) · [Google Sheets](#google-sheets) · [Knows what it is](#what-it-knows-about-itself)
+**What it can do** — [Put things in the chat](#what-it-can-put-in-the-chat) · [Stickers](#stickers) · [Rendering HTML](#rendering-html) · [Screenshots](#a-picture-of-a-real-page) · [Memory](#memory) · [The checklist](#the-checklist) · [Reactions](#reactions) · [Scheduled reminders](#scheduled-reminders) · [Scheduled summaries](#scheduled-summaries) · [Notion](#notion) · [Google Sheets](#google-sheets) · [Knows what it is](#what-it-knows-about-itself)
 
 **Keep it honest** — [Rate limiting](#rate-limiting) · [Usage and cost](#usage-and-cost) · [Moving context between groups](#moving-context-between-groups)
 
@@ -81,9 +81,9 @@ flowchart LR
         GATE["mentions<br/>is this message for me?"]
         LIMIT["rate limit<br/>before anything costs money"]
         REC["summary recorder<br/>untagged, recorded groups only"]
-        AGENT["agent<br/>system prompt + 37 tools"]
+        AGENT["agent<br/>system prompt + 38 tools"]
         TIMERS["timers<br/>session 2m · reminders 30s · digests 1m"]
-        FEAT["features<br/>21 switches own every tool<br/>read from Postgres every turn"]
+        FEAT["features<br/>22 switches own every tool<br/>read from Postgres every turn"]
         FF["ffmpeg · Chromium<br/>stickers · voice · video · rendering"]
         PROXY["proxy.ts<br/>gates every page but the root"]
         PAGES["landing · /dashboard"]
@@ -350,6 +350,7 @@ Beyond text, the bot decides for itself when one of these fits — you just ask 
 | "make a sticker of a sleepy capybara" | draws one, transparent background, and keeps it |
 | "make a sticker from <gif link>" | downloads it and converts it, animation intact |
 | "show me that as a table" | lays it out in HTML, renders it, sends it as a picture |
+| "render crafterstation.com and send a photo" | opens the page in a real browser, sends a screenshot |
 
 Notes on each:
 
@@ -512,8 +513,42 @@ scales it down. Renders are **serialised** — Chromium spikes a couple of hundr
 this box also runs Postgres and the whole wapi stack, so two at once is how a chat bot causes an
 out-of-memory kill somewhere else entirely.
 
+### A picture of a real page
+
+The renderer above cannot screenshot a website, by construction — it fetches nothing. So taking
+a picture of a link is a second function with the opposite network stance, deliberately not the
+same code path with a flag deciding whether the guard runs.
+
+Reaching the internet is precisely the hole the renderer was written not to have, so the guard is
+kept rather than dropped: the same `assertPublic` that guards every media download is applied to
+the page **and to each subresource it pulls**, since a public page can carry an
+`<img src="http://169.254.169.254/…">` and a browser would fetch it without comment.
+
+DNS is checked twice, and the second check is the one that catches an attack:
+
+1. **Before connecting** — the hostname is resolved and every address it answers with is
+   rejected if it is private. That covers the obvious.
+2. **After connecting** — the address Chromium *actually reached* is read back off the response
+   and checked again. In between, a hostname under someone else's control can change what it
+   resolves to, and the first check cannot see it, because Chromium resolves the name itself,
+   separately, after we looked. On a mismatch the picture is discarded and the call fails.
+
+Writing that check is what exposed a real hole in the guard it reuses: `new URL()` rewrites
+`http://[::ffff:169.254.169.254]/` to the host `::ffff:a9fe:a9fe` — the same address, spelled in
+hex — and the pattern that matched the dotted form saw the hex form as public internet. The
+metadata endpoint was reachable through any feature that takes a URL, stickers included. IPv6 is
+now parsed into its eight groups instead of pattern-matched, so every spelling of an embedded
+IPv4 address — mapped, the deprecated compatible form, and the NAT64 prefix — lands on the same
+answer. `npm run sticker-check` covers each of them.
+
+The page gets none of the bot's own credentials: a fresh browser, no cookies, no logins, and
+anything behind a sign-in screenshots as the sign-in screen. It scrolls the page once before
+shooting, so lazy images actually load rather than photographing a skeleton, and waits on
+`document.fonts.ready`, since a page caught mid font-swap looks broken.
+
 ```bash
-npm run render-check    # a real browser: a real PNG, a table that is a table, nothing fetched
+npm run render-check    # a real browser: a real PNG, a table that is a table, nothing fetched,
+                        # every private address refused, and one real page captured
 ```
 
 ## What it knows about itself
@@ -860,7 +895,8 @@ npm run voice-check     # voice notes really are Ogg/Opus mono 48kHz, per ffprob
 npm run video-check     # video really is H.264/yuv420p/AAC in MP4, per ffprobe
 npm run models-check    # the configured models accept the parameters this app sends (costs money)
 npm run draw-check      # generates one real image and checks alpha survives (costs money)
-npm run render-check    # a real Chromium render: a PNG, a real table, and no network at all
+npm run render-check    # a real Chromium render, and a real page captured: a PNG, a table that
+                        # stays a table, and every private address refused
 npm run build           # typecheck and production build
 ```
 

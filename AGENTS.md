@@ -27,7 +27,8 @@ WhatsApp ──▶ wapi ──POST /api/wapi/webhook──▶ this app
                                                  └─▶ wapi, via the vendored SDK ──▶ WhatsApp
 
 you ──▶ / (public) ──▶ /login ──▶ proxy.ts ──▶ /dashboard/{features,limits,stickers,
-                                       │           memory,reminders,summaries,move,usage}
+                                       │           memory,reminders,summaries,supporters,
+                                       │           move,usage}
                                        └─▶ features table ──▶ which tools a turn is given
 ```
 
@@ -51,6 +52,8 @@ lib/tasks.ts                     the per-chat checklist
 lib/reminders.ts                 scheduled work; lib/reminder-runner.ts fires it
 lib/rate-limit.ts                per-person quotas, checked before anything costs money
 lib/transfer.ts                  moving a group's context into another group (dashboard only)
+lib/supporters.ts                who chipped in; Yape by hand, Buy Me a Coffee by API
+lib/people.ts                    identities gathered from four tables, for the rate-limit picker
 lib/summaries.ts                 scheduled digests: schedules, the log, the transcript
 lib/summary-recorder.ts          writing down a recorded group; lib/summary-runner.ts fires it
 lib/cron.ts                      five-field cron, evaluated as "does this minute match?"
@@ -182,6 +185,18 @@ like a simplification opportunity.
 - **`ADMIN_PASSWORD_HASH` is base64, not the raw hash.** Docker Compose interpolates `$NAME` in
   env values, and a bcrypt hash is full of `$`. A raw hash arrives as `$2b$12` and every sign-in
   fails as "wrong password". `lib/config.ts` checks the shape and refuses a mangled one loudly.
+- **A supporter's handle must normalise to what the webhook derives.** A sender arrives as
+  `51999888777:12@s.whatsapp.net` and `mentions.identityKey` reduces it to bare digits, so
+  `supporters.normalise` has to land on the same string from `+51 999 888 777` or the star never
+  appears — silently, since both rows exist and simply never meet. `npm run supporters-check`
+  asserts that equality directly.
+- **Buy Me a Coffee's response shape is unverified.** The endpoints are real — `/api/v1/supporters`,
+  `/subscriptions` and `/extras` answer 302 to the login while a made-up path 404s — but reading
+  one needs a token only the account owner can issue. `lib/supporters.ts` therefore looks every
+  field up under several plausible names and degrades rather than throwing, and the check exercises
+  it the moment `BUYMEACOFFEE_TOKEN` exists.
+- **An unauthenticated call there redirects rather than 401ing**, so the client sets
+  `redirect: "manual"` — following it would turn a bad token into a page of HTML parsed as JSON.
 - **Moving context between groups is dashboard-only, and there is no tool for it.** Same reason
   as rate limits: anything the bot can do, anyone in a chat can ask it to do, and "move that
   group's notes into this one" is not a call the bot can make. Adding a tool for it would let one
@@ -270,6 +285,7 @@ npm run contrast-check  # resolves the landing CSS cascade and measures what is 
 npm run summary-check   # one real digest end to end: does it keep the decision, the deadline,
                         # the links, and the right picture? (costs money, needs DATABASE_URL)
 npm run transfer-check  # moves real rows between two throwaway groups, including every refusal
+npm run supporters-check # that a hand-typed number and a webhook sender normalise alike
 npm run wapi-check      # the vendored SDK against the real API: envelopes, both error types,
                         # and one real send into a throwaway sandbox session (needs WAPI_PAT)
 npm run sticker-check   # real ffmpeg conversion + the SSRF guard (needs ffmpeg)

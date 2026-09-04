@@ -152,28 +152,6 @@ export const setQuota = async (
 export const clearQuota = (userId: string): Promise<unknown[]> =>
   query("delete from rate_limits where user_id = $1", [userId]);
 
-export type Caller = { userId: string; calls: number; lastAt: Date };
-
-/**
- * Who has been calling, so a quota can be set from the dashboard without going and finding a
- * raw JID by hand. It only reaches back as far as `prune` leaves it — an hour — which is also
- * exactly the window in which someone is hitting a limit and you want to look.
- */
-export const recentCallers = async (): Promise<Caller[]> => {
-  const rows = await query<{ user_id: string; calls: string; last_at: Date }>(
-    `select user_id, count(*)::text as calls, max(at) as last_at
-       from bot_calls
-      where kind = 'call'
-      group by user_id
-      order by max(at) desc`,
-  );
-  return rows.map((r) => ({
-    userId: r.user_id,
-    calls: Number(r.calls),
-    lastAt: r.last_at,
-  }));
-};
-
 /**
  * Old rows serve no purpose once they leave the window; an hour is plenty of slack for any
  * clock skew. Called from the session watchdog, which already ticks on a timer.

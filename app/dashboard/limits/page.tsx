@@ -1,4 +1,5 @@
 import * as rateLimit from "@/lib/rate-limit";
+import * as people from "@/lib/people";
 import { config } from "@/lib/config";
 import { settle, shortJid, when } from "../shared";
 import { saveQuota, removeQuota } from "./actions";
@@ -13,13 +14,19 @@ import { saveQuota, removeQuota } from "./actions";
 export const dynamic = "force-dynamic";
 
 export default async function LimitsPage() {
-  const [quotas, callers] = await Promise.all([
+  const [quotas, directory] = await Promise.all([
     settle(rateLimit.listQuotas()),
-    settle(rateLimit.recentCallers()),
+    settle(people.directory()),
   ]);
 
+  /**
+   * A picker rather than a box to paste an identifier into. `<input list>` with a `<datalist>`
+   * is the searchable select the browser already has: you type to filter, or open the list and
+   * choose, and with JavaScript off it degrades to exactly the free-text field it replaced.
+   */
+  const byHandle = new Map((directory ?? []).map((p) => [p.handle, p]));
   const known = new Set(quotas?.map((q) => q.userId) ?? []);
-  const unlisted = (callers ?? []).filter((c) => !known.has(c.userId));
+  const unlisted = (directory ?? []).filter((p) => !known.has(p.handle));
 
   return (
     <>
@@ -60,7 +67,19 @@ export default async function LimitsPage() {
                 <form action={saveQuota} className="quota-form">
                   <input type="hidden" name="userId" value={q.userId} />
                   <div className="quota-who">
-                    <code>{shortJid(q.userId)}</code>
+                    <span className="who-name">
+                      {byHandle.get(q.userId)?.supporter && (
+                        <span className="star" title="supporter">
+                          ★
+                        </span>
+                      )}
+                      {byHandle.get(q.userId)?.label !== q.userId &&
+                      byHandle.get(q.userId)?.label ? (
+                        byHandle.get(q.userId)?.label
+                      ) : (
+                        <code>{shortJid(q.userId)}</code>
+                      )}
+                    </span>
                     <span className="meta">set {when(q.updatedAt)}</span>
                   </div>
                   <input
@@ -97,10 +116,19 @@ export default async function LimitsPage() {
           <input
             type="text"
             name="userId"
-            placeholder="51922471582@s.whatsapp.net"
+            list="people"
+            placeholder="Search a name, number or @username"
             aria-label="Person"
             required
           />
+          <datalist id="people">
+            {(directory ?? []).map((p) => (
+              <option key={p.handle} value={p.handle}>
+                {p.supporter ? "★ " : ""}
+                {p.label === p.handle ? p.seen.join(", ") : `${p.label} · ${p.seen.join(", ")}`}
+              </option>
+            ))}
+          </datalist>
           <input
             type="number"
             name="perMinute"
@@ -115,15 +143,21 @@ export default async function LimitsPage() {
         {unlisted.length > 0 && (
           <>
             <p className="meta" style={{ margin: "1rem 0 0.5rem" }}>
-              Seen calling recently — copy one rather than hunting for a raw id. Only the last
-              hour is kept, which is also when someone is hitting a limit and you come looking.
+              Everyone this deployment knows an identity for and has no quota set — supporters
+              first. A ★ is somebody who has chipped in; the rest is where the identity turned up.
             </p>
             <ul className="callers">
-              {unlisted.map((c) => (
-                <li key={c.userId}>
-                  <code>{c.userId}</code>
+              {unlisted.map((p) => (
+                <li key={p.handle}>
+                  {p.supporter && (
+                    <span className="star" title="supporter">
+                      ★
+                    </span>
+                  )}
+                  <code>{p.handle}</code>
                   <span className="meta">
-                    {c.calls} call{c.calls === 1 ? "" : "s"} · last {when(c.lastAt)}
+                    {p.label === p.handle ? "" : `${p.label} · `}
+                    {p.seen.join(" · ")}
                   </span>
                 </li>
               ))}

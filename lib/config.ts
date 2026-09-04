@@ -116,6 +116,13 @@ export const config = {
    */
   summaryModel: () => optional("BOT_SUMMARY_MODEL") ?? "gpt-5.6-sol",
 
+  /**
+   * A Buy Me a Coffee personal access token, issued from developers.buymeacoffee.com. Optional:
+   * without it, coffee supporters are simply added by hand like the Yape ones, and the sync
+   * button says so rather than failing.
+   */
+  coffeeToken: () => optional("BUYMEACOFFEE_TOKEN"),
+
   /** Reasoning depth. Low keeps a chat bot snappy; raise it if answers feel shallow. */
   effort: () => optional("BOT_EFFORT") ?? "low",
 

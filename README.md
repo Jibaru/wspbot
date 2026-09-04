@@ -35,10 +35,10 @@ bot   → Done.
 |  |  |
 | --- | --- |
 | **What it is** | One Next.js container: a webhook that answers WhatsApp, and a dashboard that decides what it may do |
-| **Abilities** | 18 switchable features over 32 model tools, plus 3 that are always on |
-| **Storage** | Postgres, 13 tables — memory, history, stickers, schedules, spend |
+| **Abilities** | 19 switchable features over 33 model tools, plus 3 that are always on |
+| **Storage** | Postgres, 14 tables — memory, history, stickers, schedules, supporters, spend |
 | **Runs on** | A Dokploy VPS behind Traefik, alongside the WhatsApp gateway it talks to |
-| **Guarded by** | 13 check scripts that exercise the real thing rather than asserting about it |
+| **Guarded by** | 14 check scripts that exercise the real thing rather than asserting about it |
 
 ## Contents
 
@@ -52,7 +52,7 @@ bot   → Done.
 
 **Keep it honest** — [Rate limiting](#rate-limiting) · [Usage and cost](#usage-and-cost) · [Moving context between groups](#moving-context-between-groups)
 
-**Chip in** — [What wapi is](#what-wapi-is) · [Open source, and the bill](#open-source-and-the-bill)
+**Chip in** — [What wapi is](#what-wapi-is) · [Supporters](#supporters) · [Open source, and the bill](#open-source-and-the-bill)
 
 ## Architecture
 
@@ -170,7 +170,7 @@ Same look as the landing page — forged gold on obsidian, Geist throughout — 
 same product. There is one theme rather than a light and a dark: the brand's resting state is
 obsidian, and a dashboard read beside the front door is better off matching it.
 
-Nine sections under `/dashboard`, each behind the sign-in:
+Ten sections under `/dashboard`, each behind the sign-in:
 
 | | |
 | --- | --- |
@@ -181,6 +181,7 @@ Nine sections under `/dashboard`, each behind the sign-in:
 | `/dashboard/memory` | What it has been told to remember |
 | `/dashboard/reminders` | Everything scheduled, across every chat |
 | `/dashboard/summaries` | Scheduled digests of a group |
+| `/dashboard/supporters` | Who has chipped in, and the Buy Me a Coffee sync |
 | `/dashboard/move` | Move a group's context into another group |
 | `/dashboard/usage` | Tokens and spend, broken down by model and kind |
 
@@ -804,6 +805,7 @@ npm run cron-check      # the cron evaluator, including both daylight-saving tra
 npm run contrast-check  # what the landing page text actually resolves to, and its contrast
 npm run summary-check   # one real digest end to end (costs money, needs DATABASE_URL)
 npm run transfer-check  # moving context between two throwaway groups (needs DATABASE_URL)
+npm run supporters-check # identity matching, the picker, and the coffee API if a token is set
 npm run sticker-check   # real ffmpeg conversion: 512x512, animated, under size ceilings
 npm run voice-check     # voice notes really are Ogg/Opus mono 48kHz, per ffprobe
 npm run video-check     # video really is H.264/yuv420p/AAC in MP4, per ffprobe
@@ -902,6 +904,36 @@ Details that still cost real debugging time:
 
 Background on all of it: `.agents/skills/wapi-nextjs/references/api-notes.md`.
 
+## Supporters
+
+`/dashboard/supporters` is the list of people who have helped pay for this — **names and how they
+helped, never amounts.** There is nothing else to store: the point is to say thank you, not to
+keep accounts.
+
+The two sources work differently, because they have to:
+
+| | |
+| --- | --- |
+| **Yape** | Entered by hand. It is a bank transfer, and the only record is a screenshot on somebody's phone — there is nothing this app can read. |
+| **Buy Me a Coffee** | Pulled. Their API is real (`/api/v1/supporters` at developers.buymeacoffee.com) and wants a personal access token from that same portal. Set `BUYMEACOFFEE_TOKEN` and the page grows a button. |
+
+A supporter can be tied to a **WhatsApp identity**, and that is what makes the list do something
+rather than just sit there:
+
+- On `/dashboard/limits`, the person field is a searchable picker over everyone this deployment
+  knows an identity for — supporters, people with a quota, recent callers, reminder owners —
+  with a ★ against anyone who has chipped in. You type a name instead of pasting a raw JID.
+- The bot can read the list out. Ask it who supports it and it names them.
+
+Tying is optional: somebody can put money in without the bot ever needing to know which chat
+participant they are.
+
+Both spellings of an identity work — a number like `51999888777`, in any punctuation, or the
+newer `@username`. They are normalised to exactly the shape the webhook derives from an incoming
+sender, which is the only reason the match works at all. `npm run supporters-check` asserts that
+specific equality, because if those two ever drift the star simply never appears and nothing
+anywhere says why.
+
 ## Open source, and the bill
 
 Both halves are open, and a star is the only thing either asks for:
@@ -939,6 +971,8 @@ lib/tasks.ts                     the per-chat checklist
 lib/reminders.ts                 scheduled work; lib/reminder-runner.ts fires it
 lib/rate-limit.ts                per-person quotas, checked before anything costs money
 lib/transfer.ts                  moving a group's context into another group
+lib/supporters.ts                who chipped in; the Buy Me a Coffee client
+lib/people.ts                    every identity this deployment knows, for the picker
 lib/summaries.ts                 scheduled digests: schedules, the message log, the transcript
 lib/summary-recorder.ts          writing down a recorded group, describing its pictures
 lib/summary-runner.ts            composing a digest and posting it

@@ -424,6 +424,14 @@ audit("app/globals.css", ":root", [
     min: 4.5,
   },
   {
+    name: "supporter star",
+    element: "span",
+    classes: ["star"],
+    ancestors: ["body", "main", ".panel", "ul.rows", "li", "form"],
+    on: "--panel",
+    min: 3,
+  },
+  {
     name: "move page — item label",
     element: "span",
     classes: [],

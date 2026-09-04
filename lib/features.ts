@@ -195,6 +195,14 @@ export const FEATURES: Feature[] = [
     tools: [],
   },
   {
+    key: "supporters",
+    title: "Knows who chipped in",
+    detail:
+      "Somebody asks who supports this bot and it reads out the list — names and how they helped, never amounts. The list is kept on the dashboard.",
+    claim: "say who has chipped in towards running you",
+    tools: ["list_supporters"],
+  },
+  {
     key: "usage_report",
     title: "Reports its usage",
     detail: "Tokens and estimated spend for today, the last week and all time.",

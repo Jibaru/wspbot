@@ -22,6 +22,7 @@ services:
       # Reminders need it: "nine in the morning" is meaningless on a UTC server.
       BOT_TIMEZONE: ${BOT_TIMEZONE}
       BOT_SUMMARY_MODEL: ${BOT_SUMMARY_MODEL}
+      BUYMEACOFFEE_TOKEN: ${BUYMEACOFFEE_TOKEN}
       # The dashboard shows memories, stickers and spend, so it is behind a sign-in.
       ADMIN_USER: ${ADMIN_USER}
       ADMIN_PASSWORD_HASH: ${ADMIN_PASSWORD_HASH}

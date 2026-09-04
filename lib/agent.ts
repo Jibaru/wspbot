@@ -24,6 +24,7 @@ import * as sheets from "./sheets";
 import * as reminders from "./reminders";
 import * as features from "./features";
 import * as summaries from "./summaries";
+import * as supporters from "./supporters";
 import { toVoiceNote, VOICE_NOTE_MIMETYPE, VOICE_NOTE_FILENAME } from "./audio";
 import { fetchDecrypted } from "./inbound-media";
 import { fetchMedia } from "./fetch-media";
@@ -176,6 +177,11 @@ const systemPrompt = async (turn: Turn, on: Set<string>): Promise<string> => {
     ...(has("stickers_send")
       ? [
           "- `send_sticker` sends one from the sticker library below, which is shared by every chat. Reach for it when a sticker answers better than words — a reaction, a joke, agreement — or when someone asks for one. Pick by what it shows, not by its id order. If nothing fits, do not force it; say something instead.",
+        ]
+      : []),
+    ...(has("supporters")
+      ? [
+          "- `list_supporters` reads out who has chipped in towards running you. Use it when somebody asks who supports this, and read the names back plainly. It holds no amounts, so do not imply any.",
         ]
       : []),
     ...(has("usage_report")
@@ -1060,6 +1066,13 @@ const toolsFor = (turn: Turn, sent: string[]) => ({
         ? `Cancelled: "${removed.prompt}".`
         : "You have nothing scheduled in this chat.";
     },
+  }),
+
+  list_supporters: tool({
+    description:
+      "List the people who have chipped in towards running this bot. Use it when someone asks who supports it, who paid for it, or who is behind it. Names and how they helped only — there are no amounts to report and you must not invent any.",
+    inputSchema: z.object({}),
+    execute: async () => supporters.render(await supporters.list()),
   }),
 
   check_usage: tool({

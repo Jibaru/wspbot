@@ -252,6 +252,30 @@ const migrate = async (): Promise<void> => {
       on logged_messages (chat, message_id);
 
     /*
+     * Who has chipped in. Yape leaves no trace this app can reach, so those are entered by hand;
+     * Buy Me a Coffee has an API, so those carry the external id they came with.
+     *
+     * The handle column is a normalised WhatsApp identity and is optional: somebody can support
+     * without the bot ever needing to know which chat participant they are.
+     */
+    create table if not exists supporters (
+      id          serial primary key,
+      name        text        not null,
+      handle      text,
+      -- yape | coffee | code | other
+      via         text        not null default 'other',
+      note        text,
+      external_id text,
+      since       timestamptz not null default now(),
+      created_at  timestamptz not null default now()
+    );
+    -- Partial, so hand-entered rows (which have no external id) never collide with each other.
+    create unique index if not exists supporters_external_key
+      on supporters (via, external_id) where external_id is not null;
+    create index if not exists supporters_handle_idx
+      on supporters (handle) where handle is not null;
+
+    /*
      * Which abilities are switched off, set from the dashboard. Only deviations are stored:
      * no row means on, so a feature added in a later release arrives enabled without a
      * migration, and this stays a list of decisions somebody made rather than a mirror of

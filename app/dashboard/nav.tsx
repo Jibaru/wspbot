@@ -18,6 +18,7 @@ const SECTIONS: { href: string; label: string }[] = [
   { href: "/dashboard/memory", label: "Memory" },
   { href: "/dashboard/reminders", label: "Reminders" },
   { href: "/dashboard/summaries", label: "Summaries" },
+  { href: "/dashboard/chime", label: "Chime-ins" },
   { href: "/dashboard/supporters", label: "Supporters" },
   { href: "/dashboard/roadmap", label: "Roadmap" },
   { href: "/dashboard/move", label: "Move" },

@@ -247,6 +247,48 @@ const migrate = async (): Promise<void> => {
       created_at  timestamptz not null default now()
     );
     create index if not exists logged_messages_chat_at_idx on logged_messages (chat, at);
+
+    /*
+     * Chiming in: which groups the bot may speak in without being tagged, and how restrained it
+     * has to be about it. Enabling a chat here records it exactly as a summary schedule does —
+     * the two read the same logged_messages — so the recording gate has to consult both.
+     *
+     * last_chime_at is the claim, moved when a run starts rather than when it finishes: a row
+     * left due while it is being worked on fires twice the moment a run outlasts the tick.
+     * chimed_to is the watermark, moved only once something has actually been considered.
+     */
+    create table if not exists chime_settings (
+      chat          text primary key,
+      chat_name     text,
+      enabled       boolean     not null default true,
+      -- The floor on how often it may speak, and how much has to have been said first.
+      every_minutes integer     not null default 90,
+      min_messages  integer     not null default 8,
+      -- Local hours in BOT_TIMEZONE, "from" inclusive and "to" exclusive; equal means never.
+      quiet_from    integer     not null default 23,
+      quiet_to      integer     not null default 8,
+      max_per_day   integer     not null default 4,
+      -- A steer for this group in particular, read into the turn that writes the message.
+      note          text,
+      chimed_to     timestamptz,
+      last_chime_at timestamptz,
+      last_error    text,
+      created_at    timestamptz not null default now()
+    );
+
+    /*
+     * What it said unprompted, and on which local day. The day is stored rather than derived,
+     * because the cap is "four times today" as a person in Lima reads it, and deriving that from
+     * a timestamp in SQL means putting a timezone into every query that counts.
+     */
+    create table if not exists chimes (
+      id   bigserial primary key,
+      chat text        not null,
+      day  text        not null,
+      text text        not null default '',
+      at   timestamptz not null default now()
+    );
+    create index if not exists chimes_chat_day_idx on chimes (chat, day);
     -- Deliveries retry, and the same message must not appear twice in a digest.
     create unique index if not exists logged_messages_unique
       on logged_messages (chat, message_id);

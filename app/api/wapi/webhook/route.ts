@@ -10,6 +10,7 @@ import { ensureConnected } from "@/lib/session";
 import * as rateLimit from "@/lib/rate-limit";
 import * as features from "@/lib/features";
 import * as summaries from "@/lib/summaries";
+import * as chime from "@/lib/chime";
 import * as recorder from "@/lib/summary-recorder";
 
 /**
@@ -113,15 +114,18 @@ async function handle({ event, data }: WebhookBody): Promise<void> {
     message.media?.kind === "sticker" && enabled.has("stickers_collect");
 
   /**
-   * The one case where a message nobody addressed to the bot is written down: a group somebody
-   * has scheduled a summary of. Deliberately narrow — the feature has to be on *and* this chat
-   * has to be the source of an enabled schedule — and `recordedChats` is cached, because this
-   * runs on every message in every group the bot sits in, including all the ones it ignores.
+   * The two cases where a message nobody addressed to the bot is written down: a group somebody
+   * has scheduled a summary of, and a group it is allowed to chime into. Both are deliberately
+   * narrow — the feature has to be on *and* this chat has to be named — and both lists are
+   * cached, because this runs on every message in every group the bot sits in, including all the
+   * ones it ignores.
    */
   const willRecord =
     message.isGroup &&
-    enabled.has("summaries") &&
-    (await summaries.recordedChats()).has(message.chat);
+    ((enabled.has("summaries") && (await summaries.recordedChats()).has(message.chat)) ||
+      // The second reason, and the same storage: a group the bot is allowed to chime into has
+      // to be read to know when there is anything worth saying.
+      (enabled.has("chime") && (await chime.chimedChats()).has(message.chat)));
 
   // Claimed only when there is work to do, so ignored chatter does not fill the table.
   if (!willReply && !willCapture && !willRecord) return;

@@ -24,6 +24,7 @@ import * as sheets from "./sheets";
 import * as reminders from "./reminders";
 import * as features from "./features";
 import * as summaries from "./summaries";
+import * as chime from "./chime";
 import * as supporters from "./supporters";
 import * as roadmap from "./roadmap";
 import { render as renderHtml, capture } from "./render-html";
@@ -83,6 +84,12 @@ export type Turn = {
   messageKey?: MessageKey;
   /** The message being replied to, when its key can be reconstructed. */
   quotedKey?: MessageKey;
+  /**
+   * Nobody addressed this turn: it is the bot deciding to speak in a group it has been reading.
+   * Changes two things and nothing else — the prompt says so, and an empty answer is allowed to
+   * stay empty rather than becoming an apology for a question that was never asked.
+   */
+  unprompted?: boolean;
 };
 
 export type Reply = {
@@ -132,7 +139,9 @@ const systemPrompt = async (turn: Turn, on: Set<string>): Promise<string> => {
    * answer that honestly: it is the one thing it does that people would reasonably object to
    * not being told about, and "am I being recorded?" deserves a true answer.
    */
-  const recorded = has("summaries") && (await summaries.recordedChats()).has(turn.chat);
+  const recordedForDigest = has("summaries") && (await summaries.recordedChats()).has(turn.chat);
+  const recordedForChime = has("chime") && (await chime.chimedChats()).has(turn.chat);
+  const recorded = recordedForDigest || recordedForChime;
   const quoted = has("quoted") ? turn.quoted : undefined;
   const source = has("stickers_make") ? stickerSource(turn) : undefined;
 
@@ -311,7 +320,27 @@ const systemPrompt = async (turn: Turn, on: Set<string>): Promise<string> => {
       : []),
     ...(recorded
       ? [
-          "Everything said in this chat is being recorded so that a scheduled summary can be written from it later, and posted into another group. If anyone asks whether you are recording, logging, reading or summarising this chat, say plainly that you are and what it is for. Never deny it. Do not bring it up unprompted.",
+          `Everything said in this chat is being recorded, ${
+            recordedForDigest && recordedForChime
+              ? "both so a scheduled summary can be written from it later and posted into another group, and so you can follow along and occasionally say something without being tagged"
+              : recordedForDigest
+                ? "so that a scheduled summary can be written from it later, and posted into another group"
+                : "so you can follow along and occasionally say something in here without being tagged"
+          }. If anyone asks whether you are recording, logging, reading or summarising this chat, say plainly that you are and what it is for. Never deny it. Do not bring it up unprompted.`,
+          "",
+        ]
+      : []),
+    ...(turn.unprompted
+      ? [
+          "*Nobody has asked you anything.* You have been reading this group and are deciding whether to say something, the way a person in the room would.",
+          "",
+          "- Silence is the normal answer. Most of what people say does not need a reply from you, and a bot that comments on everything is the thing everyone mutes. If nothing you could add is worth the notification, answer with nothing at all.",
+          "- Speak when you would actually add something: an answer to a question nobody picked up, a fact you happen to know, something you were asked to remember and this is the moment for, a genuine joke that lands. Not a summary of what they just said, not a cheerful observation that they are chatting, and never a question asked only to keep talking.",
+          "- Be short. One or two lines. You are joining a conversation, not opening one.",
+          "- Write the message itself. No preamble, no framing, no explaining why you are speaking.",
+          "- Do not greet the room, do not announce yourself, and do not ask if anyone needs help.",
+          "- Answer in the language they are speaking.",
+          "- A sticker on its own is often the right move, and better than a sentence about how funny something is.",
           "",
         ]
       : []),
@@ -1393,6 +1422,8 @@ const buildUserContent = async (
   turn: Turn,
   on: Set<string>,
 ): Promise<UserContent> => {
+  // Nobody is speaking in an unprompted turn; the text is a note to the bot, not a message.
+  if (turn.unprompted) return turn.text;
   // In a group, who is speaking changes the answer, so it has to be in the message itself.
   const said = turn.isGroup ? `${turn.senderName}: ${turn.text}` : turn.text;
   // With "follows what you point at" off, a reply is just its own words.
@@ -1470,7 +1501,11 @@ export const reply = async (turn: Turn): Promise<Reply> => {
    * be both wrong and confusing.
    */
   const answer =
-    text || (sent.length > 0 ? "" : "Sorry, I got tangled up. Try asking me again?");
+    text ||
+    (sent.length > 0 || turn.unprompted
+      ? // Nobody asked, so there is nothing to apologise for. Silence is a valid chime.
+        ""
+      : "Sorry, I got tangled up. Try asking me again?");
 
   /**
    * History records what happened, not just what was said, so "send that again" has a referent.

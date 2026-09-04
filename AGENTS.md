@@ -55,6 +55,8 @@ lib/transfer.ts                  moving a group's context into another group (da
 lib/supporters.ts                who chipped in; Yape by hand, Buy Me a Coffee by API
 lib/roadmap.ts                   supporter-weighted voting on what to build next
 lib/people.ts                    identities gathered from four tables, for the rate-limit picker
+lib/chime.ts                     chiming in: which groups, how restrained, and why not now
+lib/chime-runner.ts              fires it, through the ordinary turn
 lib/summaries.ts                 scheduled digests: schedules, the log, the transcript
 lib/summary-recorder.ts          writing down a recorded group; lib/summary-runner.ts fires it
 lib/cron.ts                      five-field cron, evaluated as "does this minute match?"
@@ -167,10 +169,29 @@ like a simplification opportunity.
 - **The model gets picture numbers, not row ids.** Asked to cite `#4821` it answers `3`, meaning
   the third picture. `summaries.render` numbers them 1..n per digest and returns the mapping in
   the same call, so the numbering and the lookup cannot drift apart.
-- **Recording is the only place the bot reads messages nobody sent it.** Gated on the feature
-  *and* on the chat being the source of an enabled schedule, cached for 30s because it is
-  consulted for every message in every group. `systemPrompt` tells the bot when the room it is
-  in is being recorded, so "are you logging this?" gets a true answer.
+- **Recording is the only place the bot reads messages nobody sent it.** Two features want it
+  now — a digest's source group, and a group it may chime into — so the gate is an `or` of two
+  cached lists, each gated on its own feature. `systemPrompt` tells the bot when the room it is
+  in is being recorded *and which reason applies*, so "are you logging this?" gets a true answer
+  either way. Adding a third reason means adding it in both places, or the bot denies something
+  that is happening.
+- **A chime is the ordinary turn, not a second prompt.** `chime-runner` calls `reply()` with
+  `unprompted: true`. Anything else would be a different bot in the same group: no memory, no
+  stickers, no self-description. `unprompted` changes exactly two things — the prompt says
+  nobody asked, and an empty answer stays empty instead of becoming "Sorry, I got tangled up",
+  which would turn every decision to stay quiet into an apology nobody can parse.
+- **Silence has to be an allowed answer, and it has to move the watermark.** A model handed a
+  transcript will always find something to say, so the prompt says plainly that saying nothing is
+  normal. The watermark moves anyway: a conversation it decided to sit out must not be
+  reconsidered an hour later, or it will eventually talk itself into commenting.
+- **`last_chime_at` moves on the claim, not on success** — the reminder bug, one table over. And
+  the claim's `$2::timestamptz` cast is load-bearing: without it pg types the parameter from its
+  neighbour and reads it as interval minus interval, which is a runtime error, not a build one.
+- **Quiet hours wrap around midnight**, so 23→8 contains neither endpoint in the usual order.
+  Getting it backwards means messaging a group at four in the morning, which is the one failure
+  here nobody forgives. `npm run chime-check` asserts both directions, and the daily cap in a
+  local day rather than a UTC one.
+- **`new URL()` rewrites an IPv6 host, and it broke the SSRF guard.**
 - **The wapi SDK is vendored, not installed, and needs one edit on the way in.** It is not
   published to npm; `npm run vendor-wapi-sdk` fetches it with `giget` and then strips the `.js`
   suffix from its relative imports. That second step is not cosmetic: the SDK is written for
@@ -349,6 +370,8 @@ npm run features-check  # every tool belongs to a switch, every switch does some
                         # README's figures still match the code
 npm run cron-check      # the cron evaluator, including both daylight-saving transitions
 npm run contrast-check  # resolves the landing CSS cascade and measures what is readable
+npm run chime-check     # chime-in restraint: the cadence, the daily cap, quiet hours across
+                        # midnight, and that claiming twice cannot double-fire
 npm run summary-check   # one real digest end to end: does it keep the decision, the deadline,
                         # the links, and the right picture? (costs money, needs DATABASE_URL)
 npm run transfer-check  # moves real rows between two throwaway groups, including every refusal

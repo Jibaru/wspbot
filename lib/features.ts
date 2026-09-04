@@ -211,6 +211,13 @@ export const FEATURES: Feature[] = [
     tools: ["render_html"],
   },
   {
+    key: "chime",
+    title: "Chimes in on its own",
+    detail:
+      "In groups set up for it, it reads along and occasionally says something without being tagged — the way somebody in the room would. Enabling a group records it, the same as a summary schedule does. How often, how much has to have been said first, quiet hours and a daily cap are all set per group.",
+    tools: [],
+  },
+  {
     key: "screenshot",
     title: "Takes a picture of a web page",
     detail:

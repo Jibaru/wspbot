@@ -14,6 +14,7 @@
     "summary-check": "tsx --conditions=react-server --env-file=.env scripts/summary-check.mts",
     "transfer-check": "tsx --conditions=react-server --env-file=.env scripts/transfer-check.mts",
     "supporters-check": "tsx --conditions=react-server --env-file=.env scripts/supporters-check.mts",
+    "chime-check": "tsx --conditions=react-server --env-file=.env scripts/chime-check.mts",
     "roadmap-check": "tsx --conditions=react-server --env-file=.env scripts/roadmap-check.mts",
     "features-check": "tsx --conditions=react-server scripts/features-check.mts",
     "wapi-check": "tsx --conditions=react-server --env-file=.env scripts/wapi-check.mts",

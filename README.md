@@ -35,10 +35,10 @@ bot   → Done.
 |  |  |
 | --- | --- |
 | **What it is** | One Next.js container: a webhook that answers WhatsApp, and a dashboard that decides what it may do |
-| **Abilities** | 22 switchable features over 38 model tools, plus 3 that are always on |
-| **Storage** | Postgres, 17 tables — memory, history, stickers, schedules, supporters, roadmap, spend |
+| **Abilities** | 23 switchable features over 38 model tools, plus 3 that are always on |
+| **Storage** | Postgres, 19 tables — memory, history, stickers, schedules, supporters, roadmap, spend |
 | **Runs on** | A Dokploy VPS behind Traefik, alongside the WhatsApp gateway it talks to |
-| **Guarded by** | 16 check scripts that exercise the real thing rather than asserting about it |
+| **Guarded by** | 17 check scripts that exercise the real thing rather than asserting about it |
 
 ## Contents
 
@@ -48,7 +48,7 @@ bot   → Done.
 
 **Use it** — [The landing page](#the-landing-page) · [The dashboard](#the-dashboard) · [Signing in](#signing-in) · [When it replies](#when-it-replies)
 
-**What it can do** — [Put things in the chat](#what-it-can-put-in-the-chat) · [Stickers](#stickers) · [Rendering HTML](#rendering-html) · [Screenshots](#a-picture-of-a-real-page) · [Memory](#memory) · [The checklist](#the-checklist) · [Reactions](#reactions) · [Scheduled reminders](#scheduled-reminders) · [Scheduled summaries](#scheduled-summaries) · [Notion](#notion) · [Google Sheets](#google-sheets) · [Knows what it is](#what-it-knows-about-itself)
+**What it can do** — [Chiming in](#chiming-in) · [Put things in the chat](#what-it-can-put-in-the-chat) · [Stickers](#stickers) · [Rendering HTML](#rendering-html) · [Screenshots](#a-picture-of-a-real-page) · [Memory](#memory) · [The checklist](#the-checklist) · [Reactions](#reactions) · [Scheduled reminders](#scheduled-reminders) · [Scheduled summaries](#scheduled-summaries) · [Notion](#notion) · [Google Sheets](#google-sheets) · [Knows what it is](#what-it-knows-about-itself)
 
 **Keep it honest** — [Rate limiting](#rate-limiting) · [Usage and cost](#usage-and-cost) · [Moving context between groups](#moving-context-between-groups)
 
@@ -80,16 +80,16 @@ flowchart LR
         HOOK["POST /api/wapi/webhook<br/>verify · ack · work in after"]
         GATE["mentions<br/>is this message for me?"]
         LIMIT["rate limit<br/>before anything costs money"]
-        REC["summary recorder<br/>untagged, recorded groups only"]
+        REC["recorder<br/>untagged, recorded groups only"]
         AGENT["agent<br/>system prompt + 38 tools"]
-        TIMERS["timers<br/>session 2m · reminders 30s · digests 1m"]
-        FEAT["features<br/>22 switches own every tool<br/>read from Postgres every turn"]
+        TIMERS["timers<br/>session 2m · reminders 30s · digests 1m · chime-ins 1m"]
+        FEAT["features<br/>23 switches own every tool<br/>read from Postgres every turn"]
         FF["ffmpeg · Chromium<br/>stickers · voice · video · rendering"]
         PROXY["proxy.ts<br/>gates every page but the root"]
         PAGES["landing · /dashboard"]
     end
 
-    PG[("Postgres<br/>17 tables")]
+    PG[("Postgres<br/>19 tables")]
 
     WA -->|"every message"| SESSION
     SESSION -->|"signed webhook"| HOOK
@@ -712,6 +712,51 @@ Each schedule keeps a watermark and summarises only what has happened since its 
 run, so nothing is covered twice and a failed run is retried at the next firing rather than
 skipping a day.
 
+## Chiming in
+
+Everything else here starts with somebody tagging the bot. This is the one thing that starts
+with the bot deciding, on its own, that a person in the room would have said something by now.
+
+Enable it per group on `/dashboard/chime`, and it reads along and occasionally speaks — an
+answer to a question nobody picked up, something it was asked to remember, a sticker where a
+sticker is the right move. One or two short messages, in the language the group is speaking, and
+it can use anything it normally can: a sticker, a voice note, a picture, a rendered table.
+
+**It goes through the ordinary turn.** A chime written by a second, smaller prompt would be a
+different bot living in the same group: no memory, no stickers, no idea what it is. Running it
+through `reply()` means the thing that speaks unprompted is the same thing people talk to. What
+differs is the invitation — a stage direction rather than a message from a person, and a prompt
+that says plainly that nobody asked it anything.
+
+**Most of the feature is restraint**, because the failure mode is not an error, it is being
+annoying. A chime needs all of these at once:
+
+| Condition | Default | Why |
+| --- | --- | --- |
+| Time since the last one | 90 min | the floor on how often it may speak |
+| New messages since then | 8 | so it joins a conversation instead of talking to an empty room |
+| Newest of them within | 25 min | so it does not answer this morning as if it had just been said |
+| Outside quiet hours | 23:00–08:00 | the one failure nobody would forgive is a 4am notification |
+| Under the daily cap | 4 | a hard ceiling regardless of how lively the day is |
+
+Any of them failing means silence — and **silence is also a normal result of the turn itself**.
+The prompt is explicit that saying nothing is the usual answer, since a model handed a
+transcript will always find something to say, and a bot that comments on everything is the one
+everyone mutes. An empty answer sends nothing, and the watermark still moves: a conversation it
+decided to sit out should not be reconsidered an hour later.
+
+Each group can carry a note — *"work group, keep it dry"*, *"friends, jokes are fine"* — which
+changes what it says considerably more than any of the numbers do.
+
+**Enabling a group records it**, exactly as a summary schedule does, into the same table with
+the same fortnight of retention. There is no other way to know whether anything is worth saying.
+The bot answers honestly when anyone asks whether it is listening, and the page says so before
+you switch anything on.
+
+```bash
+npm run chime-check     # the cadence, the cap, quiet hours across midnight, and the claim
+```
+
 ## Moving context between groups
 
 Groups get remade — a new one for the same team, a project room that supersedes a channel, a chat
@@ -901,6 +946,7 @@ npm run voice-check     # voice notes really are Ogg/Opus mono 48kHz, per ffprob
 npm run video-check     # video really is H.264/yuv420p/AAC in MP4, per ffprobe
 npm run models-check    # the configured models accept the parameters this app sends (costs money)
 npm run draw-check      # generates one real image and checks alpha survives (costs money)
+npm run chime-check     # chime-in restraint: cadence, daily cap, quiet hours, double-claim
 npm run render-check    # a real Chromium render, and a real page captured: a PNG, a table that
                         # stays a table, and every private address refused
 npm run build           # typecheck and production build
@@ -1129,6 +1175,8 @@ lib/supporters.ts                who chipped in; the Buy Me a Coffee client
 lib/roadmap.ts                   what to build next, and the weighted tally
 lib/people.ts                    every identity this deployment knows, for the picker
 lib/summaries.ts                 scheduled digests: schedules, the message log, the transcript
+lib/chime.ts                     chiming in: which groups, how restrained, and why not now
+lib/chime-runner.ts              fires it, through the ordinary turn
 lib/summary-recorder.ts          writing down a recorded group, describing its pictures
 lib/summary-runner.ts            composing a digest and posting it
 lib/cron.ts                      five-field cron, as "does this minute match?"

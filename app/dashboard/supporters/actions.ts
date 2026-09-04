@@ -21,7 +21,7 @@ export async function addSupporter(formData: FormData): Promise<void> {
 
   await supporters.add({
     name,
-    handle: String(formData.get("handle") ?? "").trim() || null,
+    handles: String(formData.get("handles") ?? "").trim() || null,
     via: (["yape", "coffee", "code", "other"].includes(via) ? via : "other") as supporters.Via,
     note: String(formData.get("note") ?? "").trim() || null,
     coffees: Number(formData.get("coffees")) || 1,
@@ -36,7 +36,7 @@ export async function updateSupporter(formData: FormData): Promise<void> {
 
   await supporters.update(id, {
     name,
-    handle: String(formData.get("handle") ?? "").trim() || null,
+    handles: String(formData.get("handles") ?? "").trim() || null,
     note: String(formData.get("note") ?? "").trim() || null,
     coffees: Number(formData.get("coffees")) || 1,
   });

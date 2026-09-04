@@ -70,7 +70,7 @@ try {
   console.log("\nstoring:");
   await supporters.add({
     name: `${MARK} Ana`,
-    handle: "+51 999 888 777",
+    handles: "+51 999 888 777",
     via: "yape",
     note: "bought the credits",
   });
@@ -79,8 +79,8 @@ try {
   const all = (await supporters.list()).filter((s) => s.name.startsWith(MARK));
   check("both were stored", all.length === 2, `— ${all.length}`);
   const ana = all.find((s) => s.name.endsWith("Ana"))!;
-  check("the handle was normalised on the way in", ana.handle === "51999888777", `— ${ana.handle}`);
-  check("a supporter with no handle is allowed", all.find((s) => s.name.endsWith("Beto"))?.handle === null);
+  check("the handle was normalised on the way in", ana.handles[0] === "51999888777", `— ${ana.handles.join(", ")}`);
+  check("a supporter with no identity is allowed", all.find((s) => s.name.endsWith("Beto"))?.handles.length === 0);
 
   supporters.forget();
   const marked = await supporters.handles();
@@ -94,10 +94,10 @@ try {
 
   // ── editing ────────────────────────────────────────────────────────────
   console.log("\nediting:");
-  await supporters.update(ana.id, { name: `${MARK} Ana Perez`, handle: "@ana", note: null, coffees: 3 });
+  await supporters.update(ana.id, { name: `${MARK} Ana Perez`, handles: "@ana", note: null, coffees: 3 });
   const edited = (await supporters.list()).find((s) => s.id === ana.id)!;
   check("the name changed", edited.name === `${MARK} Ana Perez`);
-  check("a username handle normalises too", edited.handle === "ana", `— ${edited.handle}`);
+  check("a username handle normalises too", edited.handles[0] === "ana", `— ${edited.handles.join(", ")}`);
   check("the note was cleared", edited.note === null);
 
   // ── the directory ──────────────────────────────────────────────────────

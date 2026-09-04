@@ -200,6 +200,17 @@ like a simplification opportunity.
   A dashboard change revalidates it, so an approved item does not sit invisible for five minutes.
 - **The supporter rate limit is computed, never stored.** `quotaFor` consults the supporters list.
   A row written on becoming a supporter would outlive their removal and nobody would notice.
+- **One person, several WhatsApp identities.** A phone JID, a LID and a username are all the same
+  human and none is derivable from the others — wapi maps phone to LID and back, nothing resolves
+  a username. `supporter_handles` holds them all; `supporters.handle` was a single column and is
+  migrated into it and dropped. Recording one identity means the other silently never matches.
+- **Votes key on `supporter_id`, not on the handle used.** Otherwise one person backs the same
+  item once as their LID and once as their username. The primary key is what enforces it.
+- **`parseHandles` splits on commas, not spaces.** `+51 999 888 777` is one identity written the
+  way people write it; splitting on whitespace turned it into four that matched nothing.
+- **A check must never use a real identity.** `tie` moves a handle on conflict — right for the
+  dashboard, where the case is fixing a typo — so a check written with a genuine one steals it and
+  then destroys it on cleanup. It did exactly that once.
 - **A supporter's handle must normalise to what the webhook derives.** A sender arrives as
   `51999888777:12@s.whatsapp.net` and `mentions.identityKey` reduces it to bare digits, so
   `supporters.normalise` has to land on the same string from `+51 999 888 777` or the star never
@@ -304,7 +315,8 @@ npm run summary-check   # one real digest end to end: does it keep the decision,
                         # the links, and the right picture? (costs money, needs DATABASE_URL)
 npm run transfer-check  # moves real rows between two throwaway groups, including every refusal
 npm run supporters-check # identity matching, the coffee webhook signature, and the live API
-npm run roadmap-check   # the weighting, the vote cap, and that voting twice cannot double
+npm run roadmap-check   # the weighting, the vote cap, that voting twice cannot double, and that
+                        # one person's several identities resolve to one supporter and one vote
 npm run wapi-check      # the vendored SDK against the real API: envelopes, both error types,
                         # and one real send into a throwaway sandbox session (needs WAPI_PAT)
 npm run sticker-check   # real ffmpeg conversion + the SSRF guard (needs ffmpeg)

@@ -69,9 +69,12 @@ const toItem = (row: Row): Item => ({
 /**
  * Every item, with its tally.
  *
- * The weight is joined from `supporters` rather than read off the vote, and a vote whose supporter
- * has since been removed contributes nothing — `weightFor` returns 0 for someone who is not on the
- * list, and this mirrors that in SQL by leaving the join to produce null.
+ * The weight is joined from `supporters` rather than read off the vote, so another coffee
+ * strengthens every vote already held and a removed supporter takes their weight out with them —
+ * the cascade deletes their votes, which is the same answer `weightFor` gives in TypeScript.
+ *
+ * Votes key on the supporter, never on the identity they happened to use. One person holding both
+ * a LID and a username would otherwise be able to back the same item twice.
  */
 const SELECT = `
   select i.id, i.title, i.detail, i.state, i.proposed_by, i.created_at, i.settled_at,
@@ -79,7 +82,7 @@ const SELECT = `
          count(s.id)::text                                        as backers
     from roadmap_items i
     left join roadmap_votes v on v.item_id = i.id
-    left join supporters s on s.handle = v.handle
+    left join supporters s on s.id = v.supporter_id
    group by i.id`;
 
 export const list = async (states?: State[]): Promise<Item[]> => {
@@ -127,12 +130,10 @@ export const remove = (id: number): Promise<unknown[]> =>
   query("delete from roadmap_items where id = $1", [id]);
 
 /** What one person is currently waiting on. Finished items do not count against the cap. */
-export const openVotesOf = async (handle: string): Promise<Item[]> => {
-  const key = supporters.normalise(handle);
-  if (!key) return [];
+export const openVotesOf = async (supporterId: number): Promise<Item[]> => {
   const rows = await query<Row>(
-    `${SELECT} having i.state = 'open' and bool_or(v.handle = $2)`,
-    [supporters.MAX_WEIGHT, key],
+    `${SELECT} having i.state = 'open' and bool_or(v.supporter_id = $2)`,
+    [supporters.MAX_WEIGHT, supporterId],
   );
   return rows.map(toItem);
 };
@@ -166,7 +167,7 @@ export const vote = async (handle: string, itemId: number): Promise<VoteOutcome>
     };
   }
 
-  const holding = await openVotesOf(supporter.handle!);
+  const holding = await openVotesOf(supporter.id);
   if (holding.some((h) => h.id === itemId)) {
     // Not an error worth a refusal — they already have what they asked for.
     return { ok: true, item, weight };
@@ -180,18 +181,19 @@ export const vote = async (handle: string, itemId: number): Promise<VoteOutcome>
   }
 
   await query(
-    "insert into roadmap_votes (item_id, handle) values ($1, $2) on conflict do nothing",
-    [itemId, supporter.handle],
+    "insert into roadmap_votes (item_id, supporter_id) values ($1, $2) on conflict do nothing",
+    [itemId, supporter.id],
   );
   return { ok: true, item: (await byId(itemId))!, weight };
 };
 
+/** Taking a vote back, by any identity that belongs to the person who cast it. */
 export const unvote = async (handle: string, itemId: number): Promise<boolean> => {
-  const key = supporters.normalise(handle);
-  if (!key) return false;
+  const supporter = await supporters.byHandle(handle);
+  if (!supporter) return false;
   const rows = await query(
-    "delete from roadmap_votes where item_id = $1 and handle = $2 returning item_id",
-    [itemId, key],
+    "delete from roadmap_votes where item_id = $1 and supporter_id = $2 returning item_id",
+    [itemId, supporter.id],
   );
   return rows.length > 0;
 };

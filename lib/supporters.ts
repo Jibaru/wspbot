@@ -20,8 +20,16 @@ export type Via = "yape" | "coffee" | "code" | "other";
 export type Supporter = {
   id: number;
   name: string;
-  /** Normalised WhatsApp identity, or null when they are not tied to one. */
-  handle: string | null;
+  /**
+   * Every WhatsApp identity known to be this person, normalised.
+   *
+   * Several, because WhatsApp gives one human a phone JID, a LID and a username, and none is
+   * derivable from the others — wapi maps phone to LID and back, and nothing resolves a username
+   * at all. Recording only one means whichever the bot happens to see never matches.
+   *
+   * Empty when nobody has tied them to an identity yet, which is why they cannot vote.
+   */
+  handles: string[];
   via: Via;
   note: string | null;
   /**
@@ -36,7 +44,7 @@ export type Supporter = {
 type Row = {
   id: number;
   name: string;
-  handle: string | null;
+  handles: string[] | null;
   via: string;
   note: string | null;
   coffees: number;
@@ -46,7 +54,7 @@ type Row = {
 const toSupporter = (row: Row): Supporter => ({
   id: row.id,
   name: row.name,
-  handle: row.handle,
+  handles: row.handles ?? [],
   via: (["yape", "coffee", "code", "other"].includes(row.via) ? row.via : "other") as Via,
   note: row.note,
   coffees: row.coffees,
@@ -102,30 +110,45 @@ export const normalise = (input: string): string => {
   return local.toLowerCase();
 };
 
+/** The identities come back as an array so one supporter stays one row. */
+const SELECT = `
+  select s.id, s.name, s.via, s.note, s.coffees, s.since,
+         array_remove(array_agg(h.handle order by h.handle), null) as handles
+    from supporters s
+    left join supporter_handles h on h.supporter_id = s.id
+   group by s.id`;
+
 export const list = async (): Promise<Supporter[]> => {
-  const rows = await query<Row>(
-    "select id, name, handle, via, note, coffees, since from supporters order by since desc, id desc",
-  );
+  const rows = await query<Row>(`${SELECT} order by s.since desc, s.id desc`);
   return rows.map(toSupporter);
 };
 
+/**
+ * Several identities at once, separated by commas, semicolons or newlines — **not** spaces.
+ *
+ * A space is far likelier to be inside one identity than between two: "+51 999 888 777" is how a
+ * person writes a phone number, and splitting on whitespace turned it into four identities, none
+ * of which matched anything. Comma-separated is what the field asks for.
+ */
+export const parseHandles = (input: string | null | undefined): string[] =>
+  input ? [...new Set(input.split(/[,;\n]+/).map(normalise).filter(Boolean))] : [];
+
 export const add = async (input: {
   name: string;
-  handle?: string | null;
+  handles?: string | string[] | null;
   via: Via;
   note?: string | null;
   coffees?: number;
   externalId?: string | null;
   since?: Date;
 }): Promise<void> => {
-  const handle = input.handle ? normalise(input.handle) : null;
-  await query(
-    `insert into supporters (name, handle, via, note, coffees, external_id, since)
-     values ($1, $2, $3, $4, $5, $6, coalesce($7, now()))
-     on conflict (via, external_id) where external_id is not null do nothing`,
+  const rows = await query<{ id: number }>(
+    `insert into supporters (name, via, note, coffees, external_id, since)
+     values ($1, $2, $3, $4, $5, coalesce($6, now()))
+     on conflict (via, external_id) where external_id is not null do nothing
+     returning id`,
     [
       input.name.trim(),
-      handle || null,
       input.via,
       input.note?.trim() || null,
       Math.max(1, Math.floor(input.coffees ?? 1)),
@@ -133,22 +156,57 @@ export const add = async (input: {
       input.since ?? null,
     ],
   );
+
+  // No row means the external id was already there, and its identities are not ours to overwrite.
+  const id = rows[0]?.id;
+  if (id === undefined) return;
+
+  const wanted = Array.isArray(input.handles)
+    ? input.handles.map(normalise).filter(Boolean)
+    : parseHandles(input.handles);
+  for (const handle of wanted) await tie(id, handle);
 };
+
+/**
+ * Claim one identity for a supporter.
+ *
+ * An identity belongs to exactly one person — the primary key says so — and a conflict moves it
+ * rather than failing, because the common case is fixing a mistake rather than a collision.
+ */
+export const tie = async (supporterId: number, handle: string): Promise<void> => {
+  const key = normalise(handle);
+  if (!key) return;
+  await query(
+    `insert into supporter_handles (handle, supporter_id) values ($1, $2)
+     on conflict (handle) do update set supporter_id = excluded.supporter_id`,
+    [key, supporterId],
+  );
+};
+
+export const untie = (handle: string): Promise<unknown[]> =>
+  query("delete from supporter_handles where handle = $1", [normalise(handle)]);
 
 export const update = async (
   id: number,
-  input: { name: string; handle: string | null; note: string | null; coffees: number },
+  input: { name: string; handles: string | null; note: string | null; coffees: number },
 ): Promise<void> => {
+  await query("update supporters set name = $2, note = $3, coffees = $4 where id = $1", [
+    id,
+    input.name.trim(),
+    input.note?.trim() || null,
+    Math.max(1, Math.floor(input.coffees)),
+  ]);
+
+  /*
+   * The field is the whole set, so anything removed from it is untied. Scoped to this supporter,
+   * so editing one person can never strip an identity from somebody else.
+   */
+  const wanted = parseHandles(input.handles);
   await query(
-    "update supporters set name = $2, handle = $3, note = $4, coffees = $5 where id = $1",
-    [
-      id,
-      input.name.trim(),
-      input.handle ? normalise(input.handle) || null : null,
-      input.note?.trim() || null,
-      Math.max(1, Math.floor(input.coffees)),
-    ],
+    `delete from supporter_handles where supporter_id = $1 and not (handle = any($2))`,
+    [id, wanted],
   );
+  for (const handle of wanted) await tie(id, handle);
 };
 
 export const remove = (id: number): Promise<unknown[]> =>
@@ -171,20 +229,21 @@ export const handles = async (): Promise<Set<string>> => {
   const now = Date.now();
   if (cached && now - cached.at < TTL_MS) return cached.handles;
 
-  const rows = await query<{ handle: string }>(
-    "select handle from supporters where handle is not null",
-  );
+  const rows = await query<{ handle: string }>("select handle from supporter_handles");
   const handles = new Set(rows.map((r) => r.handle));
   cached = { handles, at: now };
   return handles;
 };
 
-/** One supporter by their normalised handle, or null. What a vote consults to find its weight. */
+/**
+ * One supporter by any of their identities. What a vote consults to find its weight, and the
+ * reason a person recognised by their LID in one group is the same person as their username.
+ */
 export const byHandle = async (handle: string): Promise<Supporter | null> => {
   const key = normalise(handle);
   if (!key) return null;
   const rows = await query<Row>(
-    "select id, name, handle, via, note, coffees, since from supporters where handle = $1",
+    `${SELECT} having bool_or(h.handle = $1)`,
     [key],
   );
   return rows[0] ? toSupporter(rows[0]) : null;

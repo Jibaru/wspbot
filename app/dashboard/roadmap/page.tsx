@@ -38,7 +38,9 @@ export default async function RoadmapPage() {
     settle(supporters.list()),
   ]);
 
-  const byHandle = new Map((everyone ?? []).filter((s) => s.handle).map((s) => [s.handle!, s]));
+  const byHandle = new Map(
+    (everyone ?? []).flatMap((s) => s.handles.map((h) => [h, s] as const)),
+  );
   const votingPower = (everyone ?? []).reduce((sum, s) => sum + supporters.weightFor(s), 0);
 
   const grouped = (state: roadmap.State) => (items ?? []).filter((i) => i.state === state);
@@ -137,7 +139,8 @@ export default async function RoadmapPage() {
           <div className="row">
             <dt>Supporters who can vote</dt>
             <dd>
-              {(everyone ?? []).filter((s) => s.handle).length} of {everyone?.length ?? 0}
+              {(everyone ?? []).filter((s) => s.handles.length > 0).length} of{" "}
+              {everyone?.length ?? 0}
             </dd>
           </div>
           <div className="row">

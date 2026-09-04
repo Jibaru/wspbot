@@ -1137,7 +1137,7 @@ const toolsFor = (turn: Turn, sent: string[]) => ({
         title,
         ...(detail ? { detail } : {}),
         state: "proposed",
-        proposedBy: supporter.handle,
+        proposedBy: supporter.handles[0] ?? null,
       });
       return `Noted "${title}" as a suggestion. It is waiting for Jibaru to approve it before anyone can vote on it.`;
     },

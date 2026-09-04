@@ -74,10 +74,10 @@ export default async function SupportersPage({
                   />
                   <input
                     type="text"
-                    name="handle"
-                    defaultValue={s.handle ?? ""}
-                    placeholder="whatsapp — number or @username"
-                    aria-label="WhatsApp identity"
+                    name="handles"
+                    defaultValue={s.handles.join(", ")}
+                    placeholder="number, @username, LID — any that are them"
+                    aria-label="WhatsApp identities"
                   />
                   <input
                     type="number"
@@ -117,9 +117,9 @@ export default async function SupportersPage({
           <input type="text" name="name" placeholder="Name" aria-label="Name" required />
           <input
             type="text"
-            name="handle"
-            placeholder="whatsapp — number or @username"
-            aria-label="WhatsApp identity"
+            name="handles"
+            placeholder="51999888777, @username, LID — comma separated"
+            aria-label="WhatsApp identities"
           />
           <select name="via" aria-label="How they helped" defaultValue="yape">
             {VIA.map((v) => (

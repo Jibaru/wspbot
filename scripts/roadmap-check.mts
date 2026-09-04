@@ -3,8 +3,9 @@
  *
  * A tally is arithmetic that looks right and often is not. The specific failure this exists for is
  * **voting twice doubling a weight**: it costs nothing at write time, corrupts every tally after,
- * and nothing anywhere says so. The primary key on `(item_id, handle)` is what prevents it, and a
- * schema constraint is exactly the kind of thing that survives a refactor only if something checks.
+ * and nothing anywhere says so. The primary key on `(item_id, supporter_id)` is what prevents it —
+ * on the *supporter*, not the identity, because one person holding both a LID and a username could
+ * otherwise back the same thing once as each.
  *
  * Writes under names that cannot collide and deletes them. Needs DATABASE_URL; costs nothing.
  *
@@ -30,7 +31,7 @@ const STRANGER = "51900000009";
 const cleanup = async () => {
   await query("delete from roadmap_items where title like $1", [`${MARK}%`]);
   await query("delete from supporters where name like $1", [`${MARK}%`]);
-  await query("delete from roadmap_votes where handle = any($1)", [[ANA, BETO, WHALE, STRANGER]]);
+  // Votes cascade from the supporters and items above, so there is nothing else to clear.
 };
 
 await cleanup();
@@ -38,9 +39,9 @@ await cleanup();
 try {
   // ── the weight ─────────────────────────────────────────────────────────
   console.log("\nweight:");
-  await supporters.add({ name: `${MARK} Ana`, handle: ANA, via: "yape", coffees: 1 });
-  await supporters.add({ name: `${MARK} Beto`, handle: BETO, via: "coffee", coffees: 3 });
-  await supporters.add({ name: `${MARK} Whale`, handle: WHALE, via: "coffee", coffees: 50 });
+  await supporters.add({ name: `${MARK} Ana`, handles: ANA, via: "yape", coffees: 1 });
+  await supporters.add({ name: `${MARK} Beto`, handles: BETO, via: "coffee", coffees: 3 });
+  await supporters.add({ name: `${MARK} Whale`, handles: WHALE, via: "coffee", coffees: 50 });
   supporters.forget();
 
   const ana = (await supporters.byHandle(ANA))!;
@@ -102,7 +103,7 @@ try {
   console.log(`\nthe ${roadmap.MAX_OPEN_VOTES}-vote cap:`);
   await roadmap.vote(ANA, b);
   await roadmap.vote(ANA, c);
-  check("three open votes are allowed", (await roadmap.openVotesOf(ANA)).length === 3);
+  check("three open votes are allowed", (await roadmap.openVotesOf(ana.id)).length === 3);
 
   const fourth = await roadmap.vote(ANA, d);
   check("a fourth is refused", !fourth.ok);
@@ -116,12 +117,12 @@ try {
 
   // ── finishing an item ──────────────────────────────────────────────────
   console.log("\nshipping:");
-  check("still at the cap", (await roadmap.openVotesOf(ANA)).length === 3);
+  check("still at the cap", (await roadmap.openVotesOf(ana.id)).length === 3);
   await roadmap.setState(a, "shipped");
   check(
     "a shipped item stops counting against the cap",
-    (await roadmap.openVotesOf(ANA)).length === 2,
-    `— ${(await roadmap.openVotesOf(ANA)).length}`,
+    (await roadmap.openVotesOf(ana.id)).length === 2,
+    `— ${(await roadmap.openVotesOf(ana.id)).length}`,
   );
   const shipped = (await roadmap.byId(a))!;
   check("but its votes are kept as history", shipped.backers === 3, `— ${shipped.backers}`);
@@ -137,6 +138,76 @@ try {
     "their weight leaves the tally with them",
     afterRemoval.weight === 1 + 3,
     `— ${afterRemoval.weight}`,
+  );
+
+  /*
+   * One person, several identities.
+   *
+   * The bug this closes: Cristian is 188025162178706 to the bot in a group and _cris.fast to his
+   * friends, and neither is derivable from the other — wapi maps phone to LID and back, and
+   * nothing resolves a username at all. With a single handle column, whichever one you did not
+   * type simply never matched, silently.
+   */
+  console.log("\nseveral identities, one person:");
+  /*
+   * Deliberately unreal. `tie` moves a handle on conflict — right for the dashboard, where the
+   * common case is fixing a typo — which means a check written with a genuine identity would
+   * steal it from the real supporter and then destroy it on cleanup. It did, once.
+   */
+  const LID = "900000000000001";
+  const USERNAME = "_roadmap.check.only";
+  await supporters.add({
+    name: `${MARK} Cristian`,
+    handles: [LID, USERNAME],
+    via: "coffee",
+    coffees: 2,
+  });
+  supporters.forget();
+
+  const viaLid = await supporters.byHandle(LID);
+  const viaName = await supporters.byHandle(USERNAME);
+  check("found by the LID", viaLid?.name === `${MARK} Cristian`);
+  check("found by the username", viaName?.name === `${MARK} Cristian`);
+  check("and it is the same person", viaLid?.id === viaName?.id, `— ${viaLid?.id} vs ${viaName?.id}`);
+  check(
+    "however the identity was written",
+    (await supporters.byHandle(`@${USERNAME.toUpperCase()}`))?.id === viaLid?.id,
+  );
+  check("both are listed against them", (viaLid?.handles.length ?? 0) === 2);
+
+  // Both identities are one vote, which is the whole reason votes key on the supporter.
+  const shared = await roadmap.add({ title: `${MARK} shared`, state: "open" });
+  await roadmap.vote(LID, shared);
+  await roadmap.vote(USERNAME, shared);
+  const sharedItem = (await roadmap.byId(shared))!;
+  check(
+    "voting under both identities counts once",
+    sharedItem.backers === 1 && sharedItem.weight === 2,
+    `— ${sharedItem.weight} points from ${sharedItem.backers}`,
+  );
+  check(
+    "and the cap sees one person, not two",
+    (await roadmap.openVotesOf(viaLid!.id)).length === 1,
+  );
+
+  // The perk has to follow every identity too, or it works under one spelling and not the other.
+  const marked = await supporters.handles();
+  check("the rate-limit perk recognises the LID", marked.has(LID));
+  check("and the username", marked.has(USERNAME));
+
+  // Editing the set removes what is no longer there, and only for that person.
+  await supporters.update(viaLid!.id, {
+    name: `${MARK} Cristian`,
+    handles: LID,
+    note: null,
+    coffees: 2,
+  });
+  supporters.forget();
+  check("dropping an identity unties it", (await supporters.byHandle(USERNAME)) === null);
+  check("while the other still resolves", (await supporters.byHandle(LID))?.id === viaLid!.id);
+  check(
+    "and nobody else lost theirs",
+    (await supporters.byHandle(ANA))?.name === `${MARK} Ana`,
   );
 
   // ── what the bot reads out ─────────────────────────────────────────────

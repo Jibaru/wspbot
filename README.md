@@ -36,7 +36,7 @@ bot   → Done.
 | --- | --- |
 | **What it is** | One Next.js container: a webhook that answers WhatsApp, and a dashboard that decides what it may do |
 | **Abilities** | 20 switchable features over 36 model tools, plus 3 that are always on |
-| **Storage** | Postgres, 16 tables — memory, history, stickers, schedules, supporters, roadmap, spend |
+| **Storage** | Postgres, 17 tables — memory, history, stickers, schedules, supporters, roadmap, spend |
 | **Runs on** | A Dokploy VPS behind Traefik, alongside the WhatsApp gateway it talks to |
 | **Guarded by** | 15 check scripts that exercise the real thing rather than asserting about it |
 
@@ -947,11 +947,20 @@ unverified writes into the list. And their **Send test event** button, which set
 `live_mode: false`, is accepted and *not* stored — it proves the endpoint and the secret without
 inventing a supporter.
 
-Both spellings of an identity work — a number like `51999888777`, in any punctuation, or the
-newer `@username`. They are normalised to exactly the shape the webhook derives from an incoming
-sender, which is the only reason the match works at all. `npm run supporters-check` asserts that
-specific equality, because if those two ever drift the star simply never appears and nothing
-anywhere says why.
+**One person can hold several identities, and usually does.** WhatsApp gives the same human a
+phone JID, a LID and now a username, and none of them is derivable from the others — wapi maps a
+phone to a LID and back, and nothing resolves a username at all. So somebody who is
+`188025162178706` to the bot in a group and `_cris.fast` to his friends needs both recorded, or
+whichever one you did not type simply never matches and nothing says why.
+
+The field takes a **comma-separated** list, in any spelling: `51999888777, +51 999 888 777,
+@username, 188025162178706`. Commas rather than spaces, because a space belongs inside a phone
+number far more often than between two identities. Each is normalised to exactly the shape the
+webhook derives from an incoming sender, and `npm run supporters-check` asserts that specific
+equality — if those two ever drift, the star simply never appears.
+
+Votes key on the **supporter**, never on the identity used to cast them, so backing something as
+your LID and again as your username counts once.
 
 ## The roadmap
 

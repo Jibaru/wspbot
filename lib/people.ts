@@ -54,7 +54,7 @@ export const directory = async (): Promise<Person[]> => {
     });
   };
 
-  for (const s of known) if (s.handle) note(s.handle, s.name, "supporter", true);
+  for (const s of known) for (const h of s.handles) note(h, s.name, "supporter", true);
   for (const q of quotas) note(q.user_id, null, "has a quota");
   for (const c of callers) note(c.user_id, null, "recently active");
   for (const o of owners) note(o.user_id, o.asked_by, "has a reminder");

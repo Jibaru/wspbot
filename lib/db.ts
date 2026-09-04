@@ -272,12 +272,48 @@ const migrate = async (): Promise<void> => {
     -- Partial, so hand-entered rows (which have no external id) never collide with each other.
     create unique index if not exists supporters_external_key
       on supporters (via, external_id) where external_id is not null;
-    create index if not exists supporters_handle_idx
-      on supporters (handle) where handle is not null;
+    -- The single supporters.handle is superseded by supporter_handles below; its index goes with
+    -- it. Dropping by name rather than leaving the create in place, which would fail on every run
+    -- once the column is gone.
+    drop index if exists supporters_handle_idx;
 
     -- How much someone has chipped in, as a count rather than money. Buy Me a Coffee supplies it;
     -- a Yape gift is converted by hand. This is the voting weight, before the cap.
     alter table supporters add column if not exists coffees integer not null default 1;
+
+    /*
+     * One person, several identities.
+     *
+     * WhatsApp gives the same human a phone JID, a LID and now a username, and none is derivable
+     * from the others -- wapi maps a phone to a LID and back, and nothing resolves a username at
+     * all. So somebody who is 188025162178706 in a group and _cris.fast to his friends needs both
+     * recorded, or whichever one you did not type simply never matches and nothing says why.
+     *
+     * This table is the truth for matching. The old single supporters.handle is folded in below
+     * and then dropped, guarded so it happens exactly once.
+     */
+    create table if not exists supporter_handles (
+      -- Unique across everybody: two supporters cannot claim the same identity.
+      handle       text primary key,
+      supporter_id integer     not null references supporters (id) on delete cascade,
+      created_at   timestamptz not null default now()
+    );
+    create index if not exists supporter_handles_supporter_idx
+      on supporter_handles (supporter_id);
+
+    do $$
+    begin
+      if exists (
+        select 1 from information_schema.columns
+         where table_name = 'supporters' and column_name = 'handle'
+      ) then
+        insert into supporter_handles (handle, supporter_id)
+        select handle, id from supporters where handle is not null and handle <> ''
+        on conflict (handle) do nothing;
+
+        alter table supporters drop column handle;
+      end if;
+    end $$;
 
     /*
      * The roadmap. Supporters rank what gets built next; an item only becomes votable once it has
@@ -304,11 +340,52 @@ const migrate = async (): Promise<void> => {
      * buying another coffee strengthens every vote already held instead of needing a backfill.
      */
     create table if not exists roadmap_votes (
-      item_id integer     not null references roadmap_items (id) on delete cascade,
-      handle  text        not null,
-      at      timestamptz not null default now(),
-      primary key (item_id, handle)
+      item_id      integer     not null references roadmap_items (id) on delete cascade,
+      supporter_id integer     not null references supporters (id) on delete cascade,
+      at           timestamptz not null default now(),
+      primary key (item_id, supporter_id)
     );
+
+    /*
+     * Votes used to key on the handle somebody voted with. Once one person can hold several
+     * identities that is a second vote waiting to happen: back an item as your LID, back it again
+     * as your username, and the tally counts you twice. Keyed on the supporter it cannot.
+     *
+     * Rebuilt in place rather than recreated, so any vote already cast survives; guarded on the
+     * old column, so it runs on the deployment that first sees this and never again.
+     */
+    do $$
+    begin
+      if exists (
+        select 1 from information_schema.columns
+         where table_name = 'roadmap_votes' and column_name = 'handle'
+      ) then
+        alter table roadmap_votes add column if not exists supporter_id integer;
+
+        update roadmap_votes v
+           set supporter_id = h.supporter_id
+          from supporter_handles h
+         where h.handle = v.handle;
+
+        -- A vote whose handle belongs to nobody has no weight anyway.
+        delete from roadmap_votes where supporter_id is null;
+
+        -- Two identities of one person on the same item collapse to the earlier vote.
+        delete from roadmap_votes a
+              using roadmap_votes b
+              where a.item_id = b.item_id
+                and a.supporter_id = b.supporter_id
+                and a.ctid > b.ctid;
+
+        alter table roadmap_votes drop constraint if exists roadmap_votes_pkey;
+        alter table roadmap_votes drop column handle;
+        alter table roadmap_votes alter column supporter_id set not null;
+        alter table roadmap_votes add primary key (item_id, supporter_id);
+        alter table roadmap_votes
+          add constraint roadmap_votes_supporter_fkey
+          foreign key (supporter_id) references supporters (id) on delete cascade;
+      end if;
+    end $$;
 
     /*
      * Which abilities are switched off, set from the dashboard. Only deviations are stored:

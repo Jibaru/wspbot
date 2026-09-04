@@ -755,3 +755,50 @@
   background: var(--gold);
   color: var(--obsidian);
 }
+
+/* ── the public roadmap ──────────────────────────────────────────────── */
+
+.lp-roadmap {
+  list-style: none;
+  margin: 0 0 1.6rem;
+  padding: 0;
+  display: grid;
+  gap: 1rem;
+}
+
+.lp-road-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.45rem;
+  font-size: 0.95rem;
+}
+
+.lp-road-count {
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 0.82rem;
+  color: var(--gold);
+  white-space: nowrap;
+}
+
+/* Relative to the leader — the bars are for comparing, not for reading a number off. */
+.lp-bar {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.lp-bar span {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--gold-deep), var(--gold));
+}
+
+.lp-shipped {
+  margin: 0;
+  font-size: 0.88rem;
+  color: var(--muted);
+}

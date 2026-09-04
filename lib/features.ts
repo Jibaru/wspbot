@@ -203,6 +203,14 @@ export const FEATURES: Feature[] = [
     tools: ["list_supporters"],
   },
   {
+    key: "roadmap",
+    title: "Takes votes on what to build next",
+    detail:
+      "Anyone can ask what is being built; supporters can back items and suggest new ones. A vote is weighted by how much somebody has chipped in, capped so nobody can own the list, and a suggestion waits for approval before it becomes votable. Voting ranks things — it never switches a feature on.",
+    claim: "say what is on the roadmap, and take votes on it from supporters",
+    tools: ["list_roadmap", "vote_roadmap", "propose_roadmap"],
+  },
+  {
     key: "usage_report",
     title: "Reports its usage",
     detail: "Tokens and estimated spend for today, the last week and all time.",

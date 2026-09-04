@@ -1,6 +1,7 @@
 import "server-only";
 import { config } from "./config";
 import { query } from "./db";
+import * as supporters from "./supporters";
 
 /**
  * How often one person may set the bot working.
@@ -29,16 +30,28 @@ export type Decision =
 
 const WINDOW = "1 minute";
 
-/** A person's configured allowance, or the deployment default. */
+/**
+ * A person's allowance: their own row, then the supporter perk, then the deployment default.
+ *
+ * The perk is **computed rather than stored**. A row written when somebody became a supporter
+ * would quietly outlive them being removed from the list, and nobody would notice for a year.
+ * This is also the single place the allowance is decided, and it already runs before anything
+ * costs money — so the perk cannot drift out of sync with who is on the list.
+ *
+ * An explicit row still wins, which is what makes it an override rather than a suggestion.
+ */
 const quotaFor = async (userId: string): Promise<number> => {
   const rows = await query<{ per_minute: number }>(
     "select per_minute from rate_limits where user_id = $1",
     [userId],
   );
   const configured = rows[0]?.per_minute;
-  return typeof configured === "number" && configured > 0
-    ? configured
-    : config.defaultRateLimit();
+  if (typeof configured === "number" && configured > 0) return configured;
+
+  if ((await supporters.handles()).has(supporters.normalise(userId))) {
+    return Math.max(config.supporterRateLimit(), config.defaultRateLimit());
+  }
+  return config.defaultRateLimit();
 };
 
 /**

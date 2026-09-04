@@ -19,6 +19,7 @@ const SECTIONS: { href: string; label: string }[] = [
   { href: "/dashboard/reminders", label: "Reminders" },
   { href: "/dashboard/summaries", label: "Summaries" },
   { href: "/dashboard/supporters", label: "Supporters" },
+  { href: "/dashboard/roadmap", label: "Roadmap" },
   { href: "/dashboard/move", label: "Move" },
   { href: "/dashboard/usage", label: "Usage" },
 ];

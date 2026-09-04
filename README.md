@@ -35,10 +35,10 @@ bot   → Done.
 |  |  |
 | --- | --- |
 | **What it is** | One Next.js container: a webhook that answers WhatsApp, and a dashboard that decides what it may do |
-| **Abilities** | 19 switchable features over 33 model tools, plus 3 that are always on |
-| **Storage** | Postgres, 14 tables — memory, history, stickers, schedules, supporters, spend |
+| **Abilities** | 20 switchable features over 36 model tools, plus 3 that are always on |
+| **Storage** | Postgres, 16 tables — memory, history, stickers, schedules, supporters, roadmap, spend |
 | **Runs on** | A Dokploy VPS behind Traefik, alongside the WhatsApp gateway it talks to |
-| **Guarded by** | 14 check scripts that exercise the real thing rather than asserting about it |
+| **Guarded by** | 15 check scripts that exercise the real thing rather than asserting about it |
 
 ## Contents
 
@@ -52,7 +52,7 @@ bot   → Done.
 
 **Keep it honest** — [Rate limiting](#rate-limiting) · [Usage and cost](#usage-and-cost) · [Moving context between groups](#moving-context-between-groups)
 
-**Chip in** — [What wapi is](#what-wapi-is) · [Supporters](#supporters) · [Open source, and the bill](#open-source-and-the-bill)
+**Chip in** — [What wapi is](#what-wapi-is) · [Supporters](#supporters) · [The roadmap](#the-roadmap) · [Open source, and the bill](#open-source-and-the-bill)
 
 ## Architecture
 
@@ -170,7 +170,7 @@ Same look as the landing page — forged gold on obsidian, Geist throughout — 
 same product. There is one theme rather than a light and a dark: the brand's resting state is
 obsidian, and a dashboard read beside the front door is better off matching it.
 
-Ten sections under `/dashboard`, each behind the sign-in:
+Eleven sections under `/dashboard`, each behind the sign-in:
 
 | | |
 | --- | --- |
@@ -182,6 +182,7 @@ Ten sections under `/dashboard`, each behind the sign-in:
 | `/dashboard/reminders` | Everything scheduled, across every chat |
 | `/dashboard/summaries` | Scheduled digests of a group |
 | `/dashboard/supporters` | Who has chipped in, and the Buy Me a Coffee sync |
+| `/dashboard/roadmap` | What to build next, and the votes behind it |
 | `/dashboard/move` | Move a group's context into another group |
 | `/dashboard/usage` | Tokens and spend, broken down by model and kind |
 
@@ -806,6 +807,7 @@ npm run contrast-check  # what the landing page text actually resolves to, and i
 npm run summary-check   # one real digest end to end (costs money, needs DATABASE_URL)
 npm run transfer-check  # moving context between two throwaway groups (needs DATABASE_URL)
 npm run supporters-check # identity matching, the picker, and the coffee API if a token is set
+npm run roadmap-check   # supporter weighting, the vote cap, and the double-vote guard
 npm run sticker-check   # real ffmpeg conversion: 512x512, animated, under size ceilings
 npm run voice-check     # voice notes really are Ogg/Opus mono 48kHz, per ffprobe
 npm run video-check     # video really is H.264/yuv420p/AAC in MP4, per ffprobe
@@ -951,6 +953,42 @@ sender, which is the only reason the match works at all. `npm run supporters-che
 specific equality, because if those two ever drift the star simply never appears and nothing
 anywhere says why.
 
+## The roadmap
+
+Supporters decide the order things get built in. Ask the bot what is next, back what you want, or
+suggest something — all in the chat, since the identity is already there.
+
+**Voting ranks things. It never switches a feature on.** That is not a simplification: `features`
+is keyed on `key` alone, so it is global, and one supporter "unlocking" summaries would turn it on
+for every group the bot sits in. The roadmap produces an order; a human still builds the thing.
+
+| | |
+| --- | --- |
+| **Weight** | Your coffee count — a count, never money, so the supporters page keeps its promise. |
+| **Cap** | `min(coffees, 5)`. Gratitude stays uncapped and the true count still shows; only influence saturates. |
+| **Decay** | None. A coffee from last year still counts. |
+| **Open votes** | Three at a time. A fourth asks you to drop one; a shipped item frees its slot automatically. |
+| **Proposing** | Supporters suggest, Jibaru approves. Curated list, open suggestions. |
+
+The weight is looked up when the tally is computed rather than stored on the vote, so buying
+another coffee retroactively strengthens every vote you already hold — and a supporter removed
+from the list takes their weight out with them.
+
+Counts are public on the landing page; **who voted for what never is.** Naming that would turn a
+small group's preferences into a public record.
+
+Supporters also get a higher rate limit — `BOT_SUPPORTER_RATE_LIMIT`, five a minute by default.
+It is computed rather than stored, so removing somebody reverses it; an explicit row on
+`/dashboard/limits` still overrides.
+
+```bash
+npm run roadmap-check   # the weighting, the cap, and the double-vote guard
+```
+
+That last one is the reason the check exists. Voting twice must not double a weight — it is a
+primary key on `(item_id, handle)`, it costs nothing at write time to get wrong, and it corrupts
+every tally afterwards without anything saying so.
+
 ## Open source, and the bill
 
 Both halves are open, and a star is the only thing either asks for:
@@ -989,6 +1027,7 @@ lib/reminders.ts                 scheduled work; lib/reminder-runner.ts fires it
 lib/rate-limit.ts                per-person quotas, checked before anything costs money
 lib/transfer.ts                  moving a group's context into another group
 lib/supporters.ts                who chipped in; the Buy Me a Coffee client
+lib/roadmap.ts                   what to build next, and the weighted tally
 lib/people.ts                    every identity this deployment knows, for the picker
 lib/summaries.ts                 scheduled digests: schedules, the message log, the transcript
 lib/summary-recorder.ts          writing down a recorded group, describing its pictures

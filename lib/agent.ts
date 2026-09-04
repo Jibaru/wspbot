@@ -25,6 +25,7 @@ import * as reminders from "./reminders";
 import * as features from "./features";
 import * as summaries from "./summaries";
 import * as supporters from "./supporters";
+import * as roadmap from "./roadmap";
 import { toVoiceNote, VOICE_NOTE_MIMETYPE, VOICE_NOTE_FILENAME } from "./audio";
 import { fetchDecrypted } from "./inbound-media";
 import { fetchMedia } from "./fetch-media";
@@ -177,6 +178,12 @@ const systemPrompt = async (turn: Turn, on: Set<string>): Promise<string> => {
     ...(has("stickers_send")
       ? [
           "- `send_sticker` sends one from the sticker library below, which is shared by every chat. Reach for it when a sticker answers better than words — a reaction, a joke, agreement — or when someone asks for one. Pick by what it shows, not by its id order. If nothing fits, do not force it; say something instead.",
+        ]
+      : []),
+    ...(has("roadmap")
+      ? [
+          "- `list_roadmap` shows what is being built next and what has shipped. Anyone may ask. `vote_roadmap` records a vote for the person speaking, by the number shown in that list — so show the list first. `propose_roadmap` records a suggestion. Only supporters can vote or propose, votes are weighted by how much somebody has chipped in, and a supporter may back at most three open items at once.",
+          "- Voting ranks what gets built; it never switches anything on. If somebody expects their vote to turn a feature on, say plainly that it does not.",
         ]
       : []),
     ...(has("supporters")
@@ -1065,6 +1072,74 @@ const toolsFor = (turn: Turn, sent: string[]) => ({
       return removed
         ? `Cancelled: "${removed.prompt}".`
         : "You have nothing scheduled in this chat.";
+    },
+  }),
+
+  list_roadmap: tool({
+    description:
+      "Show what is being built next, ranked by how much support each item has, plus what has already shipped. Anyone may ask — it is not restricted to supporters. Read the numbered list back as it is given; those numbers are what someone refers to when they vote.",
+    inputSchema: z.object({}),
+    execute: async () => roadmap.render(await roadmap.list()).text,
+  }),
+
+  vote_roadmap: tool({
+    description:
+      "Back an item on the roadmap on behalf of the person speaking. Take the number from the list you just showed them — call `list_roadmap` first if you have not. Only supporters can vote and their vote is weighted by how much they have chipped in; anyone else gets a plain explanation back, which you should relay without pestering them about it.",
+    inputSchema: z.object({
+      number: z
+        .number()
+        .int()
+        .describe("The number shown beside the item in the roadmap list, not a database id."),
+    }),
+    execute: async ({ number }) => {
+      if (!turn.userId) return "I cannot tell who is speaking, so I cannot record a vote.";
+
+      /*
+       * Numbering is regenerated here rather than remembered between turns: the list can change
+       * between showing it and voting, and a stale number would quietly back the wrong thing.
+       */
+      const { numbering } = roadmap.render(await roadmap.list());
+      const itemId = numbering.get(number);
+      if (itemId === undefined) {
+        return `There is no item ${number} on the list. Show the roadmap again and use one of those numbers.`;
+      }
+
+      const outcome = await roadmap.vote(turn.userId, itemId);
+      if (!outcome.ok) {
+        const holding = outcome.holding?.length
+          ? ` They are currently backing: ${outcome.holding.map((h) => h.title).join(", ")}.`
+          : "";
+        return `Not recorded — ${outcome.why}.${holding}`;
+      }
+      return `Recorded. "${outcome.item.title}" now has ${outcome.item.weight} point${outcome.item.weight === 1 ? "" : "s"} from ${outcome.item.backers} supporter${outcome.item.backers === 1 ? "" : "s"}. Their vote counted as ${outcome.weight}.`;
+    },
+  }),
+
+  propose_roadmap: tool({
+    description:
+      "Suggest something new for the roadmap on behalf of the person speaking. Only supporters may propose. A suggestion is not votable straight away — it waits for Jibaru to approve it — so say that plainly rather than implying it is now on the list.",
+    inputSchema: z.object({
+      title: z.string().describe("One line, in their words, naming the thing they want."),
+      detail: z
+        .string()
+        .optional()
+        .describe("Anything else they said about why or how, if it adds something."),
+    }),
+    execute: async ({ title, detail }) => {
+      if (!turn.userId) return "I cannot tell who is speaking, so I cannot record a suggestion.";
+
+      const supporter = await supporters.byHandle(turn.userId);
+      if (!supporter) {
+        return "Only supporters can put things on the roadmap. Say so plainly, and mention they can chip in if they want to — once, without pressing it.";
+      }
+
+      await roadmap.add({
+        title,
+        ...(detail ? { detail } : {}),
+        state: "proposed",
+        proposedBy: supporter.handle,
+      });
+      return `Noted "${title}" as a suggestion. It is waiting for Jibaru to approve it before anyone can vote on it.`;
     },
   }),
 

@@ -406,6 +406,7 @@ console.log("\nOAuth state (which chat a Notion connection belongs to):");
     "/dashboard/summaries",
     "/dashboard/move",
     "/dashboard/supporters",
+    "/dashboard/roadmap",
   ]) {
     check(`gates ${path}`, gates(path), true);
   }

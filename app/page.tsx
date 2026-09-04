@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { FEATURES, ALWAYS } from "@/lib/features";
+import * as roadmap from "@/lib/roadmap";
 import { CrafterLockup } from "./crafter-mark";
 
 /**
@@ -58,6 +59,14 @@ export const metadata: Metadata = {
     type: "website",
   },
 };
+
+/**
+ * The vote counts make this page database-backed, where it used to be fully static. Five minutes
+ * of staleness on a tally is invisible; what it buys is that the landing page stays fast and
+ * stays up when Postgres does not — which matters, because it is the one route that has no other
+ * job than being readable.
+ */
+export const revalidate = 300;
 
 const SOURCE = "https://github.com/Jibaru/wspbot";
 const WAPI = "https://github.com/crafter-station/wapi";
@@ -126,7 +135,16 @@ const STEPS: { title: string; body: string }[] = [
   },
 ];
 
-export default function Landing() {
+export default async function Landing() {
+  /*
+   * Never fatal: a landing page that 500s because the roadmap could not be read would be a worse
+   * outcome than one that simply does not show it.
+   */
+  const items = await roadmap.list().catch(() => []);
+  const open = items.filter((i) => i.state === "open").slice(0, 5);
+  const shipped = items.filter((i) => i.state === "shipped").slice(0, 3);
+  const most = Math.max(1, ...open.map((i) => i.weight));
+
   return (
     <div className="lp">
       <div className="lp-wrap">
@@ -240,6 +258,48 @@ export default function Landing() {
             {"                            └─▶  Postgres · ffmpeg · web search"}
           </div>
         </section>
+
+        {(open.length > 0 || shipped.length > 0) && (
+          <section className="lp-section lp-reveal">
+            <p className="lp-kicker">What's next</p>
+            <h2 className="lp-h2">Supporters decide the order.</h2>
+            <p className="lp-lead">
+              Anyone who has chipped in can back what gets built next, weighted by how much — and
+              capped, so nobody owns the list. Vote by asking the bot.
+            </p>
+
+            {open.length > 0 && (
+              <ul className="lp-roadmap">
+                {open.map((item) => (
+                  <li key={item.id}>
+                    <div className="lp-road-head">
+                      <span>{item.title}</span>
+                      <span className="lp-road-count">
+                        {item.weight} <span aria-hidden="true">★</span>
+                      </span>
+                    </div>
+                    {/* Relative to the leader, so the bars compare rather than measure. */}
+                    <div className="lp-bar">
+                      <span style={{ width: `${Math.round((item.weight / most) * 100)}%` }} />
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            {shipped.length > 0 && (
+              <p className="lp-shipped">
+                Shipped:{" "}
+                {shipped.map((s, i) => (
+                  <span key={s.id}>
+                    {i > 0 && " · "}
+                    {s.title}
+                  </span>
+                ))}
+              </p>
+            )}
+          </section>
+        )}
 
         <section className="lp-section lp-reveal">
           <p className="lp-kicker">Open source</p>

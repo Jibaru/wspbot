@@ -80,6 +80,14 @@ export default async function SupportersPage({
                     aria-label="WhatsApp identity"
                   />
                   <input
+                    type="number"
+                    name="coffees"
+                    min={1}
+                    defaultValue={s.coffees}
+                    aria-label="Coffees, the voting weight"
+                    title="Coffees — the voting weight, capped at 5"
+                  />
+                  <input
                     type="text"
                     name="note"
                     defaultValue={s.note ?? ""}
@@ -120,6 +128,14 @@ export default async function SupportersPage({
               </option>
             ))}
           </select>
+          <input
+            type="number"
+            name="coffees"
+            min={1}
+            defaultValue={1}
+            aria-label="Coffees"
+            title="Coffees — the voting weight"
+          />
           <input type="text" name="note" placeholder="note (optional)" aria-label="Note" />
           <button type="submit">Add</button>
         </form>
@@ -127,6 +143,14 @@ export default async function SupportersPage({
           The WhatsApp identity is optional, and takes either form: a number like{" "}
           <code>51999888777</code> or the newer <code>@username</code>. It is normalised to the
           same shape the bot sees on an incoming message, which is what makes the match work.
+          Without one they cannot vote on the roadmap, because the bot has no way to recognise
+          them.
+        </p>
+        <p className="meta">
+          <strong>Coffees</strong> is the voting weight — a count, never money. Buy Me a Coffee
+          fills it in; for a Yape gift you decide the equivalent. It is capped at{" "}
+          {supporters.MAX_WEIGHT} when voting, so generosity shows here in full while influence
+          levels off.
         </p>
       </div>
 

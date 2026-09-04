@@ -275,6 +275,41 @@ const migrate = async (): Promise<void> => {
     create index if not exists supporters_handle_idx
       on supporters (handle) where handle is not null;
 
+    -- How much someone has chipped in, as a count rather than money. Buy Me a Coffee supplies it;
+    -- a Yape gift is converted by hand. This is the voting weight, before the cap.
+    alter table supporters add column if not exists coffees integer not null default 1;
+
+    /*
+     * The roadmap. Supporters rank what gets built next; an item only becomes votable once it has
+     * been approved, so proposing is open and the list stays curated.
+     */
+    create table if not exists roadmap_items (
+      id          serial primary key,
+      title       text        not null,
+      detail      text,
+      -- proposed | open | shipped | declined
+      state       text        not null default 'proposed',
+      -- Normalised handle of whoever suggested it; null when it was added from the dashboard.
+      proposed_by text,
+      created_at  timestamptz not null default now(),
+      settled_at  timestamptz
+    );
+    create index if not exists roadmap_items_state_idx on roadmap_items (state);
+
+    /*
+     * One vote per person per item, which the primary key enforces rather than any code. Without
+     * it, voting twice would double that person weight in the tally and nothing would say so.
+     *
+     * The weight is deliberately not stored here: it is looked up when the tally is computed, so
+     * buying another coffee strengthens every vote already held instead of needing a backfill.
+     */
+    create table if not exists roadmap_votes (
+      item_id integer     not null references roadmap_items (id) on delete cascade,
+      handle  text        not null,
+      at      timestamptz not null default now(),
+      primary key (item_id, handle)
+    );
+
     /*
      * Which abilities are switched off, set from the dashboard. Only deviations are stored:
      * no row means on, so a feature added in a later release arrives enabled without a

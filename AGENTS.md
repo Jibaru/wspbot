@@ -53,6 +53,7 @@ lib/reminders.ts                 scheduled work; lib/reminder-runner.ts fires it
 lib/rate-limit.ts                per-person quotas, checked before anything costs money
 lib/transfer.ts                  moving a group's context into another group (dashboard only)
 lib/supporters.ts                who chipped in; Yape by hand, Buy Me a Coffee by API
+lib/roadmap.ts                   supporter-weighted voting on what to build next
 lib/people.ts                    identities gathered from four tables, for the rate-limit picker
 lib/summaries.ts                 scheduled digests: schedules, the log, the transcript
 lib/summary-recorder.ts          writing down a recorded group; lib/summary-runner.ts fires it
@@ -185,6 +186,20 @@ like a simplification opportunity.
 - **`ADMIN_PASSWORD_HASH` is base64, not the raw hash.** Docker Compose interpolates `$NAME` in
   env values, and a bcrypt hash is full of `$`. A raw hash arrives as `$2b$12` and every sign-in
   fails as "wrong password". `lib/config.ts` checks the shape and refuses a mangled one loudly.
+- **Voting ranks; it never switches a feature on.** `features` is keyed on `key` alone, so it is
+  global — an "unlock" by one supporter would turn a feature on for every group the bot sits in.
+  If that ever needs to change, it is a per-chat feature table, not a tweak.
+- **A vote's weight is not stored on the vote.** It is joined from `supporters` at tally time, so
+  another coffee strengthens every vote already held and a removed supporter takes their weight
+  with them. Storing it would need a backfill nobody would remember to run.
+- **Voting twice must not double a weight.** The primary key on `roadmap_votes (item_id, handle)`
+  is the only thing preventing it, it costs nothing at write time to lose, and it corrupts every
+  tally afterwards in silence. `npm run roadmap-check` asserts it directly.
+- **The landing page is now `revalidate = 300`, not fully static.** The vote counts made it
+  database-backed; the cache is what keeps `/` fast and keeps it serving when Postgres is not.
+  A dashboard change revalidates it, so an approved item does not sit invisible for five minutes.
+- **The supporter rate limit is computed, never stored.** `quotaFor` consults the supporters list.
+  A row written on becoming a supporter would outlive their removal and nobody would notice.
 - **A supporter's handle must normalise to what the webhook derives.** A sender arrives as
   `51999888777:12@s.whatsapp.net` and `mentions.identityKey` reduces it to bare digits, so
   `supporters.normalise` has to land on the same string from `+51 999 888 777` or the star never
@@ -289,6 +304,7 @@ npm run summary-check   # one real digest end to end: does it keep the decision,
                         # the links, and the right picture? (costs money, needs DATABASE_URL)
 npm run transfer-check  # moves real rows between two throwaway groups, including every refusal
 npm run supporters-check # identity matching, the coffee webhook signature, and the live API
+npm run roadmap-check   # the weighting, the vote cap, and that voting twice cannot double
 npm run wapi-check      # the vendored SDK against the real API: envelopes, both error types,
                         # and one real send into a throwaway sandbox session (needs WAPI_PAT)
 npm run sticker-check   # real ffmpeg conversion + the SSRF guard (needs ffmpeg)

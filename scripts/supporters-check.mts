@@ -94,7 +94,7 @@ try {
 
   // ── editing ────────────────────────────────────────────────────────────
   console.log("\nediting:");
-  await supporters.update(ana.id, { name: `${MARK} Ana Perez`, handle: "@ana", note: null });
+  await supporters.update(ana.id, { name: `${MARK} Ana Perez`, handle: "@ana", note: null, coffees: 3 });
   const edited = (await supporters.list()).find((s) => s.id === ana.id)!;
   check("the name changed", edited.name === `${MARK} Ana Perez`);
   check("a username handle normalises too", edited.handle === "ana", `— ${edited.handle}`);

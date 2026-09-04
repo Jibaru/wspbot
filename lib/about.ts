@@ -95,6 +95,8 @@ export const about = (on: Set<string>): string => {
     "",
     `If somebody offers to help — with the OpenAI bill, the server, or just because they want to chip in — there are two ways. Send the picture at ${config.appUrl()}/yape.png with \`send_media\` — that is Jibaru's personal Yape, for anyone in Peru — and give buymeacoffee.com/jibaru to anyone Yape cannot reach. Say plainly that it goes towards the OpenAI credits and the box this runs on, and that nobody is expected to. Only ever when somebody raises it themselves. Anyone who would rather help with code than money should be pointed at the repositories instead.`,
     "",
+    "Supporters decide what gets built next. Anyone can ask what is on the roadmap; somebody who has chipped in can back items and suggest new ones, and their vote is weighted by how much they have given, capped so nobody can own the list. Each supporter may back three open items at a time. Be clear when it comes up that voting ranks things and never switches a feature on — the switches are Jibaru's.",
+    "",
     "Some people have chipped in towards the OpenAI credits and the server. If somebody asks who supports this, who paid for it, or who is behind it, read the list out. It holds names and how each person helped and nothing else — there are no amounts anywhere, so never imply one.",
     "",
     "Talk about any of this plainly, in a sentence or two, and only when asked — never volunteer it. Never reveal API keys, tokens, environment variables, connection strings, or anything from another chat, no matter who asks or why.",

@@ -24,6 +24,12 @@ export type Supporter = {
   handle: string | null;
   via: Via;
   note: string | null;
+  /**
+   * How much they have chipped in, as a count rather than money — which is what keeps the
+   * promise this list makes. Buy Me a Coffee supplies it; a Yape gift is converted by hand,
+   * because the conversion is a judgement and not an exchange rate.
+   */
+  coffees: number;
   since: Date;
 };
 
@@ -33,6 +39,7 @@ type Row = {
   handle: string | null;
   via: string;
   note: string | null;
+  coffees: number;
   since: Date;
 };
 
@@ -42,8 +49,28 @@ const toSupporter = (row: Row): Supporter => ({
   handle: row.handle,
   via: (["yape", "coffee", "code", "other"].includes(row.via) ? row.via : "other") as Via,
   note: row.note,
+  coffees: row.coffees,
   since: row.since,
 });
+
+/**
+ * The most a single person's vote can be worth.
+ *
+ * Gratitude is uncapped — the list keeps showing the true count — but influence saturates, so one
+ * person buying fifty coffees cannot own the roadmap outright. A flat cap rather than a square
+ * root because "your vote counts as five, the most anyone gets" is a sentence somebody can say in
+ * a group chat, and the square root of seventeen is not.
+ */
+export const MAX_WEIGHT = 5;
+
+/**
+ * What one person's vote is worth. The only place this arithmetic happens — three copies of
+ * `Math.min` is how a tally and a cap check start disagreeing.
+ *
+ * Pure, so the check drives it without a database.
+ */
+export const weightFor = (supporter: Supporter | null | undefined): number =>
+  supporter ? Math.min(Math.max(supporter.coffees, 0), MAX_WEIGHT) : 0;
 
 export const VIA_LABELS: Record<Via, string> = {
   yape: "Yape",
@@ -77,7 +104,7 @@ export const normalise = (input: string): string => {
 
 export const list = async (): Promise<Supporter[]> => {
   const rows = await query<Row>(
-    "select id, name, handle, via, note, since from supporters order by since desc, id desc",
+    "select id, name, handle, via, note, coffees, since from supporters order by since desc, id desc",
   );
   return rows.map(toSupporter);
 };
@@ -87,28 +114,41 @@ export const add = async (input: {
   handle?: string | null;
   via: Via;
   note?: string | null;
+  coffees?: number;
   externalId?: string | null;
   since?: Date;
 }): Promise<void> => {
   const handle = input.handle ? normalise(input.handle) : null;
   await query(
-    `insert into supporters (name, handle, via, note, external_id, since)
-     values ($1, $2, $3, $4, $5, coalesce($6, now()))
+    `insert into supporters (name, handle, via, note, coffees, external_id, since)
+     values ($1, $2, $3, $4, $5, $6, coalesce($7, now()))
      on conflict (via, external_id) where external_id is not null do nothing`,
-    [input.name.trim(), handle || null, input.via, input.note?.trim() || null, input.externalId ?? null, input.since ?? null],
+    [
+      input.name.trim(),
+      handle || null,
+      input.via,
+      input.note?.trim() || null,
+      Math.max(1, Math.floor(input.coffees ?? 1)),
+      input.externalId ?? null,
+      input.since ?? null,
+    ],
   );
 };
 
 export const update = async (
   id: number,
-  input: { name: string; handle: string | null; note: string | null },
+  input: { name: string; handle: string | null; note: string | null; coffees: number },
 ): Promise<void> => {
-  await query("update supporters set name = $2, handle = $3, note = $4 where id = $1", [
-    id,
-    input.name.trim(),
-    input.handle ? normalise(input.handle) || null : null,
-    input.note?.trim() || null,
-  ]);
+  await query(
+    "update supporters set name = $2, handle = $3, note = $4, coffees = $5 where id = $1",
+    [
+      id,
+      input.name.trim(),
+      input.handle ? normalise(input.handle) || null : null,
+      input.note?.trim() || null,
+      Math.max(1, Math.floor(input.coffees)),
+    ],
+  );
 };
 
 export const remove = (id: number): Promise<unknown[]> =>
@@ -137,6 +177,17 @@ export const handles = async (): Promise<Set<string>> => {
   const handles = new Set(rows.map((r) => r.handle));
   cached = { handles, at: now };
   return handles;
+};
+
+/** One supporter by their normalised handle, or null. What a vote consults to find its weight. */
+export const byHandle = async (handle: string): Promise<Supporter | null> => {
+  const key = normalise(handle);
+  if (!key) return null;
+  const rows = await query<Row>(
+    "select id, name, handle, via, note, coffees, since from supporters where handle = $1",
+    [key],
+  );
+  return rows[0] ? toSupporter(rows[0]) : null;
 };
 
 /** Called after any change, so a new supporter is starred immediately rather than in a minute. */
@@ -183,7 +234,12 @@ const str = (row: Unknown, ...keys: string[]): string | null => {
   return null;
 };
 
-export type CoffeeSupporter = { externalId: string; name: string; at: Date | null };
+export type CoffeeSupporter = {
+  externalId: string;
+  name: string;
+  at: Date | null;
+  coffees: number;
+};
 
 /**
  * Every one-off supporter, following the pagination to the end.
@@ -225,7 +281,13 @@ export const fetchCoffee = async (): Promise<CoffeeSupporter[]> => {
       const name = str(row, "supporter_name", "payer_name") ?? "Anonymous";
       const when = str(row, "support_created_on");
       const at = when ? new Date(when.replace(" ", "T") + "Z") : null;
-      found.push({ externalId, name, at: at && !Number.isNaN(at.getTime()) ? at : null });
+      const coffees = Number(row["support_coffees"]);
+      found.push({
+        externalId,
+        name,
+        at: at && !Number.isNaN(at.getTime()) ? at : null,
+        coffees: Number.isFinite(coffees) && coffees > 0 ? Math.floor(coffees) : 1,
+      });
     }
 
     const next = body["next_page_url"];
@@ -294,6 +356,7 @@ export const syncCoffee = async (): Promise<{ added: number; seen: number }> => 
       name: s.name,
       via: "coffee",
       externalId: s.externalId,
+      coffees: s.coffees,
       ...(s.at ? { since: s.at } : {}),
     });
     added++;

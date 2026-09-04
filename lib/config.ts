@@ -162,6 +162,16 @@ export const config = {
   },
 
   /**
+   * What a supporter is allowed per minute. Applied by `lib/rate-limit.ts` to anyone on the
+   * supporters list with a tied handle, unless they have a row of their own. Never lowers
+   * anybody: if it is set below the default, the default wins.
+   */
+  supporterRateLimit: () => {
+    const value = Number(optional("BOT_SUPPORTER_RATE_LIMIT"));
+    return Number.isFinite(value) && value > 0 ? Math.floor(value) : 5;
+  },
+
+  /**
    * Off by default: the bot is a group tool, and a one-to-one chat has no tagging convention to
    * signal when it is wanted, so it would answer everything anyone sent it.
    */

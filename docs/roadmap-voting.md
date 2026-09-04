@@ -1,7 +1,7 @@
 # Supporter-weighted roadmap voting
 
-**Status: planned, not built.** Design settled by interview; nothing in this document exists in
-the code yet.
+**Status: built and deployed.** Kept as the record of why it is shaped this way; the code is the
+authority on what it does.
 
 Supporters influence what gets built next by voting, weighted by how much they have supported.
 They can also propose items. Separately, being a supporter raises your rate limit.

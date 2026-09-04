@@ -1,6 +1,12 @@
 {
   "version": 1,
   "skills": {
+    "grilling": {
+      "source": "mattpocock/skills",
+      "sourceType": "github",
+      "skillPath": "skills/productivity/grilling/SKILL.md",
+      "computedHash": "4dd886b0196bf43729d954ae326016f2bd9f5f79d892500b407c33a753362f14"
+    },
     "icongen": {
       "source": "Jibaru/skills",
       "sourceType": "github",

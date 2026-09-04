@@ -130,6 +130,13 @@ export const config = {
    */
   coffeeWebhookSecret: () => optional("BUYMEACOFFEE_WEBHOOK_SECRET"),
 
+  /**
+   * Where Chromium lives, for rendering HTML to a picture. Set only when it is somewhere other
+   * than Alpine's default — on a Mac, for instance, pointing at a local Chrome is what makes
+   * `npm run render-check` runnable outside Docker.
+   */
+  chromiumPath: () => optional("CHROMIUM_PATH"),
+
   /** Reasoning depth. Low keeps a chat bot snappy; raise it if answers feel shallow. */
   effort: () => optional("BOT_EFFORT") ?? "low",
 

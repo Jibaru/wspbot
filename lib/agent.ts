@@ -26,6 +26,7 @@ import * as features from "./features";
 import * as summaries from "./summaries";
 import * as supporters from "./supporters";
 import * as roadmap from "./roadmap";
+import { render as renderHtml } from "./render-html";
 import { toVoiceNote, VOICE_NOTE_MIMETYPE, VOICE_NOTE_FILENAME } from "./audio";
 import { fetchDecrypted } from "./inbound-media";
 import { fetchMedia } from "./fetch-media";
@@ -189,6 +190,12 @@ const systemPrompt = async (turn: Turn, on: Set<string>): Promise<string> => {
     ...(has("supporters")
       ? [
           "- `list_supporters` reads out who has chipped in towards running you. Use it when somebody asks who supports this, and read the names back plainly. It holds no amounts, so do not imply any.",
+        ]
+      : []),
+    ...(has("render")
+      ? [
+          "- `render_html` lays something out in HTML and sends it as a picture. Reach for it whenever the meaning is in the layout — a table, a comparison, a schedule, a receipt, a scoreboard — because WhatsApp shows none of that as text, and a table typed as plain text is unreadable on a phone. Also use it when somebody asks to see something as an image, or to render something you already wrote out.",
+          "- Nothing in that HTML is fetched: no external stylesheet, font or image will load. Inline everything and use ordinary system fonts. Emoji work.",
         ]
       : []),
     ...(has("usage_report")
@@ -1072,6 +1079,56 @@ const toolsFor = (turn: Turn, sent: string[]) => ({
       return removed
         ? `Cancelled: "${removed.prompt}".`
         : "You have nothing scheduled in this chat.";
+    },
+  }),
+
+  render_html: tool({
+    description:
+      "Lay something out in HTML and send it to the chat as a picture. Use it when the answer is a table, a card, a comparison, a receipt, a schedule — anything whose meaning is in its layout, which WhatsApp cannot show as text. Also use it when somebody asks to *see* something you have just written out, or asks for it as an image.",
+    inputSchema: z.object({
+      html: z
+        .string()
+        .describe(
+          "A fragment, not a whole document — no <html>, <head> or <body>, and no <script>. Style it with a `style` attribute or one inline <style> block. Nothing is fetched: no external stylesheet, font, or image URL will load, so inline anything you need and use ordinary system fonts. Tables, flexbox, grid and emoji all work.",
+        ),
+      width: z
+        .number()
+        .int()
+        .optional()
+        .describe("Pixels wide, 320 to 1200. Leave it out for 720, which suits a phone."),
+      caption: z.string().optional().describe("One short line to send with it, if it needs one."),
+    }),
+    execute: async ({ html, width, caption }) => {
+      try {
+        const { png, height, blocked } = await renderHtml(html, width ?? 720);
+
+        const url = await wapi.upload({
+          base64: png.toString("base64"),
+          mimetype: "image/png",
+          fileName: "render.png",
+        });
+        await wapi.send({
+          to: turn.chat,
+          imageUrl: url,
+          ...(caption ? { text: caption } : {}),
+        });
+
+        sent.push("an image");
+        /*
+         * Blocked resources are reported, not hidden. A page whose stylesheet never loaded still
+         * renders — unstyled — and the model would otherwise have no way to tell that from its
+         * own markup being wrong.
+         */
+        const missed = blocked.length
+          ? ` It could not fetch ${blocked.length === 1 ? "this" : "these"}, so ${blocked.length === 1 ? "it is" : "they are"} missing from the picture: ${blocked.join(", ")}. Nothing external is ever fetched — inline it and render again if it mattered.`
+          : "";
+        return `Sent it, ${width ?? 720}x${height}. Do not describe what is in the picture — they can see it.${missed}`;
+      } catch (err) {
+        // Returned, not thrown: the model can simplify the markup and try once more.
+        const why = err instanceof Error ? err.message : String(err);
+        console.error("[render] failed:", why);
+        return `Could not render that: ${why}. If it referenced anything by URL, that is why — nothing is fetched. Try again with everything inline.`;
+      }
     },
   }),
 

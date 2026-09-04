@@ -203,6 +203,14 @@ export const FEATURES: Feature[] = [
     tools: ["list_supporters"],
   },
   {
+    key: "render",
+    title: "Draws its own HTML",
+    detail:
+      "Anything it can lay out in HTML — a table, a card, a summary with real formatting — it can render and send as a picture, since WhatsApp shows none of that as text. Rendered with no network access at all, so nothing the page references can be fetched.",
+    claim: "render a table or a card as a picture",
+    tools: ["render_html"],
+  },
+  {
     key: "roadmap",
     title: "Takes votes on what to build next",
     detail:

@@ -25,6 +25,10 @@ services:
       BOT_SUPPORTER_RATE_LIMIT: ${BOT_SUPPORTER_RATE_LIMIT}
       BUYMEACOFFEE_TOKEN: ${BUYMEACOFFEE_TOKEN}
       BUYMEACOFFEE_WEBHOOK_SECRET: ${BUYMEACOFFEE_WEBHOOK_SECRET}
+      # Left empty in production — the image installs Chromium at the path the renderer
+      # already looks in. The `:-` default is what keeps compose from warning about an
+      # unset variable on every deploy; it exists only so it *can* be overridden.
+      CHROMIUM_PATH: ${CHROMIUM_PATH:-}
       # The dashboard shows memories, stickers and spend, so it is behind a sign-in.
       ADMIN_USER: ${ADMIN_USER}
       ADMIN_PASSWORD_HASH: ${ADMIN_PASSWORD_HASH}

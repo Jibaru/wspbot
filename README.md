@@ -35,10 +35,10 @@ bot   → Done.
 |  |  |
 | --- | --- |
 | **What it is** | One Next.js container: a webhook that answers WhatsApp, and a dashboard that decides what it may do |
-| **Abilities** | 20 switchable features over 36 model tools, plus 3 that are always on |
+| **Abilities** | 21 switchable features over 37 model tools, plus 3 that are always on |
 | **Storage** | Postgres, 17 tables — memory, history, stickers, schedules, supporters, roadmap, spend |
 | **Runs on** | A Dokploy VPS behind Traefik, alongside the WhatsApp gateway it talks to |
-| **Guarded by** | 15 check scripts that exercise the real thing rather than asserting about it |
+| **Guarded by** | 16 check scripts that exercise the real thing rather than asserting about it |
 
 ## Contents
 
@@ -48,7 +48,7 @@ bot   → Done.
 
 **Use it** — [The landing page](#the-landing-page) · [The dashboard](#the-dashboard) · [Signing in](#signing-in) · [When it replies](#when-it-replies)
 
-**What it can do** — [Put things in the chat](#what-it-can-put-in-the-chat) · [Stickers](#stickers) · [Memory](#memory) · [The checklist](#the-checklist) · [Reactions](#reactions) · [Scheduled reminders](#scheduled-reminders) · [Scheduled summaries](#scheduled-summaries) · [Notion](#notion) · [Google Sheets](#google-sheets) · [Knows what it is](#what-it-knows-about-itself)
+**What it can do** — [Put things in the chat](#what-it-can-put-in-the-chat) · [Stickers](#stickers) · [Rendering HTML](#rendering-html) · [Memory](#memory) · [The checklist](#the-checklist) · [Reactions](#reactions) · [Scheduled reminders](#scheduled-reminders) · [Scheduled summaries](#scheduled-summaries) · [Notion](#notion) · [Google Sheets](#google-sheets) · [Knows what it is](#what-it-knows-about-itself)
 
 **Keep it honest** — [Rate limiting](#rate-limiting) · [Usage and cost](#usage-and-cost) · [Moving context between groups](#moving-context-between-groups)
 
@@ -81,15 +81,15 @@ flowchart LR
         GATE["mentions<br/>is this message for me?"]
         LIMIT["rate limit<br/>before anything costs money"]
         REC["summary recorder<br/>untagged, recorded groups only"]
-        AGENT["agent<br/>system prompt + 32 tools"]
+        AGENT["agent<br/>system prompt + 37 tools"]
         TIMERS["timers<br/>session 2m · reminders 30s · digests 1m"]
-        FEAT["features<br/>18 switches own every tool<br/>read from Postgres every turn"]
-        FF["ffmpeg<br/>stickers · voice · video"]
+        FEAT["features<br/>21 switches own every tool<br/>read from Postgres every turn"]
+        FF["ffmpeg · Chromium<br/>stickers · voice · video · rendering"]
         PROXY["proxy.ts<br/>gates every page but the root"]
         PAGES["landing · /dashboard"]
     end
 
-    PG[("Postgres<br/>13 tables")]
+    PG[("Postgres<br/>17 tables")]
 
     WA -->|"every message"| SESSION
     SESSION -->|"signed webhook"| HOOK
@@ -349,6 +349,7 @@ Beyond text, the bot decides for itself when one of these fits — you just ask 
 | "add that to the meeting notes page" | finds the page and appends it |
 | "make a sticker of a sleepy capybara" | draws one, transparent background, and keeps it |
 | "make a sticker from <gif link>" | downloads it and converts it, animation intact |
+| "show me that as a table" | lays it out in HTML, renders it, sends it as a picture |
 
 Notes on each:
 
@@ -369,6 +370,9 @@ Notes on each:
   in WhatsApp Web — a browser decodes whatever the OS can — and the mobile app refuses it, so
   the bug is invisible on a laptop. `npm run voice-check` verifies the container and codec with
   ffprobe. Six voices, and the bot can be asked for a delivery style ("warm and unhurried").
+- **A table, a card or a scoreboard is drawn, not typed.** WhatsApp has no layout — a table
+  pasted as text wraps into nonsense on a phone — so the bot writes HTML and sends a picture of
+  it. [Rendering HTML](#rendering-html) covers how.
 - **Polls** take 2–12 options and can allow multiple choices. Duplicate options are removed
   first — WhatsApp drops them silently, which would quietly turn a 3-option poll into 2.
 - When a tool has already put something in the chat, the bot sends at most one short line after
@@ -468,6 +472,49 @@ one noticing. Older stickers saved before this get their bytes backfilled the fi
 are sent.
 
 Everything collected is shown on `/`.
+
+## Rendering HTML
+
+WhatsApp has no layout. A table typed as text wraps into nonsense on a phone, and asterisks are
+the whole formatting vocabulary. So when the answer *is* a layout — a comparison, a schedule, a
+scoreboard, a receipt, who owes what — the bot writes HTML and sends a picture of it.
+
+Ask for it (*"show that as a table"*, *"send it as an image"*) or leave it to the bot; it reaches
+for the tool on its own when the meaning is in the arrangement.
+
+**Rendered by Chromium, and that choice is the feature.** Next already bundles satori through
+`next/og`, which would have cost nothing to adopt and lays out a hand-built flexbox card
+beautifully. It also renders
+
+```html
+<table><tr><td>Ana</td><td>3</td></tr><tr><td>Beto</td><td>1</td></tr></table>
+```
+
+as `Ana3Beto1`, on one line — no error, no warning, just wrong, because it implements a CSS
+subset with no table layout. Since the point is rendering HTML written for a person to read, and
+a table is the likeliest thing anyone asks for, that subset is the one thing that cannot be
+accepted. Chromium costs about 180MB in the image and renders what it is given. `npm run
+render-check` compares a table's height against the same rows stacked as blocks, so a regression
+to a subset renderer fails rather than shipping a one-line picture.
+
+**Nothing is fetched. At all.** The HTML is written by a model, shaped by whatever somebody typed
+into a group chat, and a browser that will load a URL is a browser that can be aimed at
+`169.254.169.254`. Every request that is not a `data:` URI is aborted before it leaves — external
+stylesheet, webfont, remote image alike. Same stance as the SSRF guard on media, enforced a
+different way, and blocked URLs are *reported back to the model* rather than swallowed: a page
+whose stylesheet never arrived still renders, just unstyled, and nothing else would tell it the
+difference between that and its own bad markup.
+
+The rest is bounds. Width is clamped to 320–1200 and the height comes from the content, so a
+short card is not padded with white and a long table is not cropped; the render is capped at
+4000px, given 15 seconds, and drawn at `deviceScaleFactor: 2` so text stays sharp after WhatsApp
+scales it down. Renders are **serialised** — Chromium spikes a couple of hundred megabytes, and
+this box also runs Postgres and the whole wapi stack, so two at once is how a chat bot causes an
+out-of-memory kill somewhere else entirely.
+
+```bash
+npm run render-check    # a real browser: a real PNG, a table that is a table, nothing fetched
+```
 
 ## What it knows about itself
 
@@ -813,6 +860,7 @@ npm run voice-check     # voice notes really are Ogg/Opus mono 48kHz, per ffprob
 npm run video-check     # video really is H.264/yuv420p/AAC in MP4, per ffprobe
 npm run models-check    # the configured models accept the parameters this app sends (costs money)
 npm run draw-check      # generates one real image and checks alpha survives (costs money)
+npm run render-check    # a real Chromium render: a PNG, a real table, and no network at all
 npm run build           # typecheck and production build
 ```
 
@@ -995,7 +1043,7 @@ npm run roadmap-check   # the weighting, the cap, and the double-vote guard
 ```
 
 That last one is the reason the check exists. Voting twice must not double a weight — it is a
-primary key on `(item_id, handle)`, it costs nothing at write time to get wrong, and it corrupts
+primary key on `(item_id, supporter_id)`, it costs nothing at write time to get wrong, and it corrupts
 every tally afterwards without anything saying so.
 
 ## Open source, and the bill
@@ -1054,6 +1102,7 @@ lib/wapi.ts                      thin facade over the vendored SDK
 lib/wapi-sdk/                    the official wapi SDK, vendored
 lib/stickers.ts                  the sticker library: decrypt, dedupe, describe, store
 lib/sticker-maker.ts             ffmpeg: anything -> 512x512 WebP, animation preserved
+lib/render-html.ts               Chromium: model-written HTML -> a picture, with no network
 lib/audio.ts                     TTS output -> Ogg/Opus, the voice-note format
 lib/video.ts                     anything -> H.264/AAC MP4, the format that plays
 lib/ffmpeg.ts                    shared ffmpeg runner and scratch directories

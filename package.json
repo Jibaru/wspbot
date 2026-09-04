@@ -2,7 +2,7 @@
   "name": "wspbot",
   "version": "0.1.0",
   "private": true,
-  "description": "A WhatsApp bot that answers when tagged \u2014 searches the web and remembers what you tell it.",
+  "description": "A WhatsApp bot that answers when tagged — searches the web and remembers what you tell it.",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -21,6 +21,7 @@
     "sticker-check": "tsx --conditions=react-server scripts/sticker-check.mts",
     "voice-check": "tsx --conditions=react-server scripts/voice-check.mts",
     "draw-check": "tsx --conditions=react-server scripts/draw-check.mts",
+    "render-check": "tsx --conditions=react-server --env-file-if-exists=.env scripts/render-check.mts",
     "models-check": "tsx --conditions=react-server scripts/models-check.mts",
     "video-check": "tsx --conditions=react-server scripts/video-check.mts"
   },
@@ -30,6 +31,7 @@
     "bcryptjs": "^3.0.3",
     "next": "^16.3.2",
     "pg": "^8.23.0",
+    "puppeteer-core": "^25.10.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "server-only": "^0.0.1",

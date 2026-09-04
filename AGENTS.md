@@ -85,6 +85,7 @@ lib/sticker-maker.ts             ffmpeg: anything -> 512x512 WebP
 lib/audio.ts                     TTS output -> Ogg/Opus
 lib/video.ts                     anything -> H.264/AAC MP4
 lib/ffmpeg.ts                    shared ffmpeg runner + scratch dirs
+lib/render-html.ts               Chromium: the bot's own HTML -> a picture, no network at all
 lib/fetch-media.ts               guarded remote downloads (SSRF)
 ```
 
@@ -268,6 +269,20 @@ like a simplification opportunity.
 - **`next start` does not serve this app.** `output: "standalone"` means the built server is
   `.next/standalone/server.js`; `next start` prints a warning and then behaves differently enough
   to mislead. Test a production build with `node .next/standalone/server.js`, or in Docker.
+- **satori cannot render a table, and says nothing.** `next/og` is already in the tree and was
+  the obvious way to draw HTML. Given `<table><tr><td>Ana</td><td>3</td></tr>…` it emits
+  `Ana3Beto1` on one line — its CSS subset has no table layout, and there is no error. A table is
+  the likeliest thing anyone asks to be drawn, so `lib/render-html.ts` is Chromium.
+  `npm run render-check` measures a table against the same rows stacked, because "it rendered
+  something" is exactly what this bug looks like.
+- **The render browser fetches nothing, and reports what it refused.** That HTML is
+  model-authored and shaped by whatever was typed in a group, so anything but a `data:` URI is
+  aborted — same threat as `lib/fetch-media.ts`, enforced by request interception instead.
+  Blocked URLs go back to the model: a page whose stylesheet never arrived still renders, just
+  unstyled, and nothing else distinguishes that from its own bad markup.
+- **One render at a time.** Chromium spikes a couple of hundred megabytes and this box also runs
+  Postgres and the wapi stack. The promise queue in `lib/render-html.ts` is not tidiness; two
+  concurrent renders is how a WhatsApp bot causes an OOM kill somewhere else.
 - **Groups only, and only when tagged.** DMs are ignored by default (`BOT_REPLY_TO_DMS`).
   Stickers are the sole exception: collected untagged, silently, never answered.
 
@@ -322,6 +337,8 @@ npm run wapi-check      # the vendored SDK against the real API: envelopes, both
 npm run sticker-check   # real ffmpeg conversion + the SSRF guard (needs ffmpeg)
 npm run voice-check     # voice notes really are Ogg/Opus mono 48kHz, per ffprobe
 npm run draw-check      # one real image generation, checks alpha survives (costs money)
+npm run render-check    # a real Chromium render: a PNG, a table that stays a table, no network
+                        # (needs a browser; set CHROMIUM_PATH outside Docker)
 npm run video-check     # video really is H.264/yuv420p/AAC in MP4, per ffprobe
 npm run models-check    # run after ANY model change: does the tier accept tools, vision,
                         # effort, verbosity and a transparent background? (costs money)

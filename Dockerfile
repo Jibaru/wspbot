@@ -23,11 +23,19 @@ WORKDIR /app
 # The greps fail the build rather than the feature. Without libwebp there is no WebP encoder;
 # without libopus, voice notes come out in a format WhatsApp Web plays and the mobile app does
 # not — a difference invisible until someone tries it on a phone.
-RUN apk add --no-cache ffmpeg \
+#
+# Chromium renders the bot's own HTML to a picture. Fonts are not optional alongside it: without
+# font-noto the page draws boxes, and without font-noto-emoji every emoji in a WhatsApp message
+# comes out a blank rectangle — which reads as a broken feature rather than a missing package.
+#
+# The checks fail the build rather than the feature, same as the codecs.
+RUN apk add --no-cache ffmpeg chromium font-noto font-noto-emoji font-noto-cjk ttf-dejavu \
  && ffmpeg -hide_banner -encoders | grep -q libwebp \
  && ffmpeg -hide_banner -encoders | grep -q libopus \
  && ffmpeg -hide_banner -encoders | grep -q libx264 \
- && ffmpeg -hide_banner -encoders | grep -qw aac
+ && ffmpeg -hide_banner -encoders | grep -qw aac \
+ && test -x /usr/bin/chromium \
+ && /usr/bin/chromium --version
 
 ENV NODE_ENV=production
 # Next binds to localhost without this, and Traefik would get a connection refused.

@@ -235,6 +235,8 @@ export const capture = async (raw: string, fullPage = false): Promise<Captured> 
     let browser: Browser | undefined;
     /** Set when something got through to a private address; the picture is then never returned. */
     let rebound: string | null = null;
+    /** The first URL our own guard dropped, so a failure can say that rather than `net::ERR_FAILED`. */
+    let firstBlocked: string | null = null;
 
     try {
       browser = await launch();
@@ -247,6 +249,16 @@ export const capture = async (raw: string, fullPage = false): Promise<Captured> 
         deviceScaleFactor: fullPage ? 1 : 2,
       });
       await page.setUserAgent(UA);
+      await page.setExtraHTTPHeaders({ "accept-language": "es-PE,es;q=0.9,en;q=0.8" });
+      /*
+       * `navigator.webdriver` is true whenever a browser is driven over CDP, and a good number of
+       * sites read it and serve a challenge page instead of themselves. Hiding it is not evasion
+       * of a paywall or a login — nothing here signs in anywhere — it is the difference between
+       * photographing a site and photographing an interstitial that says "checking your browser".
+       */
+      await page.evaluateOnNewDocument(() => {
+        Object.defineProperty(navigator, "webdriver", { get: () => undefined });
+      });
 
       await page.setRequestInterception(true);
       page.on("request", (request) => {
@@ -262,6 +274,7 @@ export const capture = async (raw: string, fullPage = false): Promise<Captured> 
             await request.continue();
           } catch {
             // Everything else — file:, a private address, an unresolvable name — is dropped.
+            if (!firstBlocked) firstBlocked = url;
             await request.abort().catch(() => undefined);
           }
         })();
@@ -278,13 +291,15 @@ export const capture = async (raw: string, fullPage = false): Promise<Captured> 
 
       /*
        * `domcontentloaded` rather than `networkidle`: a page with a chat widget or an analytics
-       * heartbeat never goes idle, and waiting for that turns every capture into a timeout. The
-       * settle below is what gives a client-rendered page its chance to paint.
+       * heartbeat never goes idle, and waiting for that turns every capture into a timeout. What
+       * gives a client-rendered page its chance is `painted` below, not the load event — on a
+       * single-page app the document is "loaded" while the body is still an empty <div id=root>.
        */
       await page.goto(target.toString(), {
         waitUntil: "domcontentloaded",
         timeout: PAGE_TIMEOUT_MS,
       });
+      await painted(page);
       await settle(page);
 
       if (rebound) {
@@ -304,6 +319,13 @@ export const capture = async (raw: string, fullPage = false): Promise<Captured> 
     } catch (err) {
       if (err instanceof CaptureError) throw err;
       const why = err instanceof Error ? err.message : String(err);
+      /*
+       * A navigation that fails because *we* aborted it reads as `net::ERR_FAILED`, which sends
+       * the model hunting for a problem with the site. Name what was actually refused.
+       */
+      if (firstBlocked && /ERR_FAILED|ERR_ABORTED|ERR_BLOCKED/.test(why)) {
+        throw new CaptureError(`refused to open ${firstBlocked} — it is not a reachable public address`);
+      }
       throw new CaptureError(
         /timeout/i.test(why) ? "the page took too long to load" : why,
       );
@@ -311,6 +333,28 @@ export const capture = async (raw: string, fullPage = false): Promise<Captured> 
       await browser?.close().catch(() => undefined);
     }
   });
+
+/**
+ * Wait for the page to have something on it.
+ *
+ * A single-page app fires DOMContentLoaded with an empty `<div id="root">`, and screenshotting
+ * there produces a blank picture — which looks exactly like a bug in this code rather than a page
+ * that had not drawn yet. So the wait is on the content: text on screen, or an image, or a canvas.
+ * Bounded, because a page that genuinely has nothing must still come back rather than time out.
+ */
+const painted = async (page: Page): Promise<void> => {
+  await page
+    .waitForFunction(
+      () => {
+        const body = document.body;
+        if (!body) return false;
+        if ((body.innerText ?? "").trim().length > 40) return true;
+        return document.querySelector("img, svg, canvas, video, picture") !== null;
+      },
+      { timeout: 8_000, polling: 250 },
+    )
+    .catch(() => undefined);
+};
 
 /**
  * Give a client-rendered page a moment, and scroll it so lazy images load.

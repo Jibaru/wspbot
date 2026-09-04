@@ -542,9 +542,15 @@ IPv4 address — mapped, the deprecated compatible form, and the NAT64 prefix �
 answer. `npm run sticker-check` covers each of them.
 
 The page gets none of the bot's own credentials: a fresh browser, no cookies, no logins, and
-anything behind a sign-in screenshots as the sign-in screen. It scrolls the page once before
-shooting, so lazy images actually load rather than photographing a skeleton, and waits on
-`document.fonts.ready`, since a page caught mid font-swap looks broken.
+anything behind a sign-in screenshots as the sign-in screen.
+
+Getting a picture of the *site* rather than of its scaffolding is most of the remaining work. A
+single-page app fires its load event with an empty `<div id="root">`, so the wait is on content —
+text, or an image — not on the event. The page is then scrolled once so lazy images actually load
+instead of photographing a skeleton, and `document.fonts.ready` is awaited, since a page caught
+mid font-swap looks broken. `navigator.webdriver`, which is true for any browser driven over CDP
+and which a good number of sites read, is hidden: that evades no login and no paywall, it is the
+difference between a picture of the site and a picture of "checking your browser".
 
 ```bash
 npm run render-check    # a real browser: a real PNG, a table that is a table, nothing fetched,

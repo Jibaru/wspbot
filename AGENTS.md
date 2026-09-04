@@ -293,6 +293,14 @@ like a simplification opportunity.
   page can pull an `<img>` from `169.254.169.254` — and then re-checks the address Chromium
   actually reached, off `response.remoteAddress()`. That second check is the only thing that sees
   DNS rebinding: Chromium resolves the name itself, separately, after the first check looked.
+- **A single-page app is "loaded" while its body is still empty.** DOMContentLoaded fires on
+  `<div id="root">` and nothing else, so screenshotting there returns a blank picture that looks
+  like a bug in the renderer rather than a page that had not drawn. `painted()` waits for text or
+  an image, bounded, before the scroll.
+- **`navigator.webdriver` is what gets a challenge page instead of the site.** It is true for any
+  browser driven over CDP and plenty of sites read it. Hiding it evades no login and no paywall —
+  the capture signs in nowhere — it is the difference between a picture of the site and a picture
+  of "checking your browser".
 - **`new URL()` rewrites an IPv6 host, and it broke the SSRF guard.**
   `http://[::ffff:169.254.169.254]/` normalises to `::ffff:a9fe:a9fe`, so a pattern matching the
   dotted spelling passed the metadata endpoint through as public — in every feature taking a URL,

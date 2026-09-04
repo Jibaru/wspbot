@@ -1,4 +1,5 @@
 import "server-only";
+import { createHmac, timingSafeEqual } from "node:crypto";
 import { query } from "./db";
 import { config } from "./config";
 
@@ -113,6 +114,10 @@ export const update = async (
 export const remove = (id: number): Promise<unknown[]> =>
   query("delete from supporters where id = $1", [id]);
 
+/** Used by the webhook when a donation is refunded — the money came back, so the row goes. */
+export const removeByExternalId = (externalId: string): Promise<unknown[]> =>
+  query("delete from supporters where via = 'coffee' and external_id = $1", [externalId]);
+
 /**
  * The handles that belong to a supporter.
  *
@@ -152,17 +157,20 @@ export const render = (all: Supporter[]): string => {
  * ──────────────────────────────────────────────────────────────────────── */
 
 /**
- * Buy Me a Coffee's API is real — `/api/v1/supporters`, `/subscriptions` and `/extras` all
- * exist, while a made-up path under the same prefix 404s — and it wants a personal access token
- * created in the developer portal at developers.buymeacoffee.com.
+ * Buy Me a Coffee's read API.
  *
- * **The response shape here has not been verified against a live account**, because that needs a
- * token only the owner can issue. It is therefore written to tolerate variation: every field is
- * looked up under more than one plausible name and anything missing degrades to a sensible
- * default rather than throwing. `npm run coffee-check` runs it against the real API the moment a
- * token exists, which is the point at which the guesswork above stops being guesswork.
+ * Verified against a live account rather than guessed at: `/api/v1/supporters` answers a
+ * Laravel-style paginated envelope — `data` plus `total`, `per_page`, `next_page_url` and the
+ * rest — with five rows to a page. `/subscriptions` and `/extras` answer `200` with
+ * `{"error": "No subscriptions"}` when there are none, which is a state rather than a failure and
+ * is treated as one.
+ *
+ * The token is a personal access token issued at developers.buymeacoffee.com.
  */
 const COFFEE_BASE = "https://developers.buymeacoffee.com/api/v1";
+
+/** Five rows a page, so a long history would otherwise stop at the first handful. */
+const MAX_PAGES = 40;
 
 type Unknown = Record<string, unknown>;
 
@@ -177,38 +185,94 @@ const str = (row: Unknown, ...keys: string[]): string | null => {
 
 export type CoffeeSupporter = { externalId: string; name: string; at: Date | null };
 
-/** One page of one-off supporters. Returns them raw so the caller decides what to store. */
+/**
+ * Every one-off supporter, following the pagination to the end.
+ *
+ * `supporter_name` is what somebody typed and can be blank when they gave anonymously;
+ * `payer_name` is what the payment carried, so it is the fallback rather than the first choice.
+ */
 export const fetchCoffee = async (): Promise<CoffeeSupporter[]> => {
   const token = config.coffeeToken();
   if (!token) throw new Error("BUYMEACOFFEE_TOKEN is not set");
 
-  const res = await fetch(`${COFFEE_BASE}/supporters`, {
-    headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
-    cache: "no-store",
-    // An unauthenticated request is answered with a redirect to their login page rather than a
-    // 401, so following it would turn a bad token into a wall of HTML.
-    redirect: "manual",
-  });
+  const found: CoffeeSupporter[] = [];
+  let url: string | null = `${COFFEE_BASE}/supporters`;
 
-  if (res.status === 302 || res.status === 301) {
-    throw new Error("Buy Me a Coffee refused the token — check BUYMEACOFFEE_TOKEN");
+  for (let page = 0; url && page < MAX_PAGES; page++) {
+    const res: Response = await fetch(url, {
+      headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+      cache: "no-store",
+      /*
+       * An unauthenticated request is answered with a redirect to their login page rather than a
+       * 401, so following it would turn a bad token into a wall of HTML parsed as JSON.
+       */
+      redirect: "manual",
+    });
+
+    if (res.status === 301 || res.status === 302) {
+      throw new Error("Buy Me a Coffee refused the token — check BUYMEACOFFEE_TOKEN");
+    }
+    if (!res.ok) throw new Error(`Buy Me a Coffee answered ${res.status}`);
+
+    const body = (await res.json()) as Unknown;
+    // "No supporters" arrives as a 200 with an error string. That is empty, not broken.
+    if (typeof body["error"] === "string") break;
+
+    const rows = (Array.isArray(body["data"]) ? body["data"] : []) as Unknown[];
+    for (const row of rows) {
+      const externalId = str(row, "support_id");
+      if (!externalId) continue;
+      const name = str(row, "supporter_name", "payer_name") ?? "Anonymous";
+      const when = str(row, "support_created_on");
+      const at = when ? new Date(when.replace(" ", "T") + "Z") : null;
+      found.push({ externalId, name, at: at && !Number.isNaN(at.getTime()) ? at : null });
+    }
+
+    const next = body["next_page_url"];
+    url = typeof next === "string" && next ? next : null;
   }
-  if (!res.ok) {
-    throw new Error(`Buy Me a Coffee answered ${res.status}`);
-  }
 
-  const body = (await res.json()) as Unknown;
-  const rows = (Array.isArray(body["data"]) ? body["data"] : Array.isArray(body) ? body : []) as Unknown[];
+  return found;
+};
 
-  return rows.flatMap((row) => {
-    const externalId = str(row, "support_id", "id", "payment_id");
-    if (!externalId) return [];
-    const name =
-      str(row, "supporter_name", "payer_name", "name", "supporter_email") ?? "Anonymous";
-    const when = str(row, "support_created_on", "created_on", "created_at");
-    const at = when ? new Date(when) : null;
-    return [{ externalId, name, at: at && !Number.isNaN(at.getTime()) ? at : null }];
-  });
+/**
+ * Did this delivery really come from Buy Me a Coffee?
+ *
+ * Their scheme, from the published documentation: HMAC-SHA256 over the **raw body**, keyed with
+ * the per-webhook signing secret, hex-encoded, carried in `x-signature-sha256`. Compared in
+ * constant time, and a length mismatch is a failed check rather than a thrown error — which is
+ * what `timingSafeEqual` does on its own if you let it.
+ */
+export const verifySignature = (
+  rawBody: string,
+  signature: string | null,
+  secret: string,
+): boolean => {
+  if (!signature) return false;
+  const expected = Buffer.from(createHmac("sha256", secret).update(rawBody).digest("hex"));
+  const given = Buffer.from(signature.trim());
+  return expected.length === given.length && timingSafeEqual(expected, given);
+};
+
+/**
+ * One supporter out of a webhook payload.
+ *
+ * The envelope is `{event_id, type, live_mode, created, attempt, data}` and the fields inside
+ * `data` come from their published webhook schema — `supporter_name`, `supporter_id`, and an
+ * event-specific `id`. Kept next to the read client so the two cannot drift on what a supporter
+ * is called.
+ */
+export const fromWebhook = (
+  type: string,
+  data: Unknown,
+): { externalId: string; name: string; at: Date | null } | null => {
+  const externalId = str(data, "id", "transaction_id", "supporter_id");
+  if (!externalId) return null;
+  return {
+    externalId: `${type}:${externalId}`,
+    name: str(data, "supporter_name", "payer_name") ?? "Anonymous",
+    at: null,
+  };
 };
 
 /**

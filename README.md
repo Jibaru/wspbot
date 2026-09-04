@@ -915,7 +915,7 @@ The two sources work differently, because they have to:
 | | |
 | --- | --- |
 | **Yape** | Entered by hand. It is a bank transfer, and the only record is a screenshot on somebody's phone — there is nothing this app can read. |
-| **Buy Me a Coffee** | Pulled. Their API is real (`/api/v1/supporters` at developers.buymeacoffee.com) and wants a personal access token from that same portal. Set `BUYMEACOFFEE_TOKEN` and the page grows a button. |
+| **Buy Me a Coffee** | Both pulled and pushed. `BUYMEACOFFEE_TOKEN` gives the page a **Pull supporters** button; a webhook pointed at `/api/coffee/webhook` means new ones arrive on their own. |
 
 A supporter can be tied to a **WhatsApp identity**, and that is what makes the list do something
 rather than just sit there:
@@ -927,6 +927,23 @@ rather than just sit there:
 
 Tying is optional: somebody can put money in without the bot ever needing to know which chat
 participant they are.
+
+### The Buy Me a Coffee webhook
+
+Create a webhook in their developer portal pointed at `APP_URL/api/coffee/webhook`, and set its
+signing secret as `BUYMEACOFFEE_WEBHOOK_SECRET`. Subscribe to `donation.created` and its siblings
+— the supporters page lists exactly which.
+
+It is shaped like the wapi receiver, for the same two reasons. The signature is **HMAC-SHA256 over
+the raw body**, in `x-signature-sha256`, verified before anything parses the JSON — `req.json()`
+would consume the stream and leave nothing to hash. And the delivery is **acknowledged first**,
+with the work done in `after()`: a failed delivery is retried four more times with exponential
+delays, so a slow handler would turn one coffee into five.
+
+Two deliberate refusals. Without a signing secret the route answers `503` rather than accepting
+unverified writes into the list. And their **Send test event** button, which sets
+`live_mode: false`, is accepted and *not* stored — it proves the endpoint and the secret without
+inventing a supporter.
 
 Both spellings of an identity work — a number like `51999888777`, in any punctuation, or the
 newer `@username`. They are normalised to exactly the shape the webhook derives from an incoming

@@ -414,6 +414,7 @@ console.log("\nOAuth state (which chat a Notion connection belongs to):");
   // Called by wapi and by Notion with no cookie; gating either breaks the bot silently.
   check("leaves /api/wapi/webhook open", gates("/api/wapi/webhook"), false);
   check("leaves /api/notion/callback open", gates("/api/notion/callback"), false);
+  check("leaves /api/coffee/webhook open", gates("/api/coffee/webhook"), false);
   check("leaves /login open", gates("/login"), false);
   // Static files, which a signed-out browser has to be able to fetch or the tab has no icon.
   check("leaves /favicon.svg open", gates("/favicon.svg"), false);

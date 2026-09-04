@@ -15,6 +15,16 @@ export const dynamic = "force-dynamic";
 
 const VIA: supporters.Via[] = ["yape", "coffee", "code", "other"];
 
+const WEBHOOK_EVENTS = [
+  "donation.created",
+  "extra_purchase.created",
+  "commission_order.created",
+  "wishlist_payment.created",
+  "membership.started",
+  "recurring_donation.started",
+  "donation.refunded",
+];
+
 export default async function SupportersPage({
   searchParams,
 }: {
@@ -23,6 +33,7 @@ export default async function SupportersPage({
   const params = await searchParams;
   const all = await settle(supporters.list());
   const coffeeReady = Boolean(config.coffeeToken());
+  const webhookReady = Boolean(config.coffeeWebhookSecret());
 
   return (
     <>
@@ -135,13 +146,53 @@ export default async function SupportersPage({
           <>
             <p className="empty">Not connected.</p>
             <p className="meta" style={{ marginTop: "0.6rem" }}>
-              Buy Me a Coffee does have an API — <code>/api/v1/supporters</code> at
-              developers.buymeacoffee.com — and it wants a personal access token issued from that
-              same developer portal. Set it as <code>BUYMEACOFFEE_TOKEN</code> and this becomes a
-              button. Until then, coffee supporters can be added by hand like the Yape ones.
+              Set <code>BUYMEACOFFEE_TOKEN</code> — a personal access token from
+              developers.buymeacoffee.com — and this becomes a button. Until then, coffee
+              supporters can be added by hand like the Yape ones.
             </p>
           </>
         )}
+      </div>
+
+      <h2>Webhook</h2>
+      <div className="panel">
+        <p className={webhookReady ? "meta" : "empty"}>
+          {webhookReady
+            ? "Listening. New supporters appear here on their own."
+            : "Not listening — no signing secret, so deliveries are refused rather than trusted."}
+        </p>
+        <dl style={{ marginTop: "0.8rem" }}>
+          <div className="row">
+            <dt>Point the webhook at</dt>
+            <dd>
+              <code>{config.appUrl()}/api/coffee/webhook</code>
+            </dd>
+          </div>
+          <div className="row">
+            <dt>Then set</dt>
+            <dd>
+              <code>BUYMEACOFFEE_WEBHOOK_SECRET</code>
+            </dd>
+          </div>
+          <div className="row">
+            <dt>Events worth subscribing to</dt>
+            <dd style={{ textAlign: "left" }}>
+              {WEBHOOK_EVENTS.map((e) => (
+                <div key={e}>
+                  <code>{e}</code>
+                </div>
+              ))}
+            </dd>
+          </div>
+        </dl>
+        <p className="meta" style={{ marginTop: "0.8rem" }}>
+          Each webhook has its own signing secret, shown when you create it; removing and
+          re-adding the webhook is how it is regenerated. Deliveries are verified as HMAC-SHA256
+          over the raw body and acknowledged immediately — a failed one is retried four times with
+          exponential delays, so a slow reply would turn one coffee into five. The dashboard&apos;s
+          <em> Send test event</em> button is accepted and deliberately not stored, so you can
+          prove the endpoint without inventing a supporter.
+        </p>
       </div>
     </>
   );

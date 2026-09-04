@@ -7,15 +7,19 @@
  * never appears and nothing anywhere says why — the row is there, the person is there, and they
  * simply never meet.
  *
- * The Buy Me a Coffee section runs only when BUYMEACOFFEE_TOKEN is set. Their response shape is
- * the one thing here that has not been verified against a live account, so this is where that
- * gets settled the moment a token exists.
+ * It also drives the webhook signature — HMAC-SHA256 over the raw body, their scheme — through
+ * every way it should fail, including a truncated one, since `timingSafeEqual` throws on a length
+ * mismatch and a check that crashes is not a check that refuses.
+ *
+ * The Buy Me a Coffee section runs only when BUYMEACOFFEE_TOKEN is set, and then it talks to the
+ * real API.
  *
  * Writes under a handle that cannot collide and deletes it. Needs DATABASE_URL.
  *
  *   npm run supporters-check
  */
 
+import { createHmac } from "node:crypto";
 import { query } from "../lib/db.js";
 import * as supporters from "../lib/supporters.js";
 import * as people from "../lib/people.js";
@@ -124,21 +128,98 @@ try {
   check("it carries no amounts", !/\d+[.,]\d{2}|\$|S\/|PEN|USD/.test(rendered), `— ${rendered.replace(/\n/g, " | ")}`);
   check("an empty list reads as empty", supporters.render([]) === "(nobody yet)");
 
-  // ── Buy Me a Coffee ────────────────────────────────────────────────────
+  // ── the webhook signature ──────────────────────────────────────────────
+  console.log("\nwebhook signatures:");
+  const body = JSON.stringify({ type: "donation.created", live_mode: true, data: { id: 1 } });
+  const secret = "a-signing-secret";
+  const good = createHmac("sha256", secret).update(body).digest("hex");
+
+  check("a correct signature passes", supporters.verifySignature(body, good, secret));
+  check("a missing one does not", !supporters.verifySignature(body, null, secret));
+  check("an empty one does not", !supporters.verifySignature(body, "", secret));
+  check(
+    "a signature over a different body does not",
+    !supporters.verifySignature(
+      body,
+      createHmac("sha256", secret).update(body + " ").digest("hex"),
+      secret,
+    ),
+  );
+  check(
+    "the same body under a different secret does not",
+    !supporters.verifySignature(
+      body,
+      createHmac("sha256", "other").update(body).digest("hex"),
+      secret,
+    ),
+  );
+
+  /** `timingSafeEqual` throws on a length mismatch, so a truncated one must fail, not crash. */
+  let threw = false;
+  let truncatedFailed = false;
+  try {
+    truncatedFailed = !supporters.verifySignature(body, good.slice(0, 20), secret);
+  } catch {
+    threw = true;
+  }
+  check("a truncated signature is refused", truncatedFailed);
+  check("and refusing it did not throw", !threw);
+  check(
+    "surrounding whitespace is tolerated",
+    supporters.verifySignature(body, "  " + good + "  ", secret),
+  );
+
+  // ── the webhook payload ────────────────────────────────────────────────
+  console.log("\nwebhook payloads:");
+  const donation = supporters.fromWebhook("donation.created", {
+    id: 9911,
+    supporter_name: "Someone",
+    payer_name: "Someone Else",
+    supporter_id: 42,
+  });
+  check("a donation yields a supporter", donation?.name === "Someone");
+  check(
+    "the id is namespaced by event type",
+    donation?.externalId === "donation.created:9911",
+    "— " + String(donation?.externalId),
+  );
+  check(
+    "an anonymous donation falls back to the payer name",
+    supporters.fromWebhook("donation.created", { id: 1, payer_name: "Card Holder" })?.name ===
+      "Card Holder",
+  );
+  check(
+    "with neither, it is Anonymous",
+    supporters.fromWebhook("donation.created", { id: 1 })?.name === "Anonymous",
+  );
+  check(
+    "nothing identifiable yields nothing",
+    supporters.fromWebhook("donation.created", {}) === null,
+  );
+
+  // ── Buy Me a Coffee, live ──────────────────────────────────────────────
   console.log("\nbuy me a coffee:");
   if (!config.coffeeToken()) {
-    console.log("  SKIP no BUYMEACOFFEE_TOKEN set — the API shape is unverified until there is one");
+    console.log("  SKIP no BUYMEACOFFEE_TOKEN set");
   } else {
     const found = await supporters.fetchCoffee();
-    check("the API answered with a list", Array.isArray(found), `— ${found.length} supporter(s)`);
+    check("the API answered", Array.isArray(found), "— " + found.length + " supporter(s)");
+    check("every row has an id and a name", found.every((f) => f.externalId && f.name));
     check(
-      "every row has an id and a name",
-      found.every((f) => f.externalId && f.name),
-    );
-    check(
-      "any date parsed",
+      "every date parsed",
       found.every((f) => f.at === null || !Number.isNaN(f.at.getTime())),
     );
+    check("ids are unique", new Set(found.map((f) => f.externalId)).size === found.length);
+    for (const f of found.slice(0, 5)) {
+      console.log(
+        "      " +
+          f.externalId.padEnd(10) +
+          " " +
+          f.name +
+          "  " +
+          (f.at ? f.at.toISOString().slice(0, 10) : "no date"),
+      );
+    }
   }
 } finally {
   await cleanup();

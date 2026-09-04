@@ -190,11 +190,14 @@ like a simplification opportunity.
   `supporters.normalise` has to land on the same string from `+51 999 888 777` or the star never
   appears — silently, since both rows exist and simply never meet. `npm run supporters-check`
   asserts that equality directly.
-- **Buy Me a Coffee's response shape is unverified.** The endpoints are real — `/api/v1/supporters`,
-  `/subscriptions` and `/extras` answer 302 to the login while a made-up path 404s — but reading
-  one needs a token only the account owner can issue. `lib/supporters.ts` therefore looks every
-  field up under several plausible names and degrades rather than throwing, and the check exercises
-  it the moment `BUYMEACOFFEE_TOKEN` exists.
+- **Buy Me a Coffee paginates Laravel-style, five to a page.** `/api/v1/supporters` answers
+  `data` plus `next_page_url`, so reading only the first page silently stops at five supporters.
+  Verified against the live account. `/subscriptions` and `/extras` answer **200** with
+  `{"error": "No subscriptions"}` when empty — a state, not a failure.
+- **The coffee webhook signs with HMAC-SHA256 over the raw body**, hex, in `x-signature-sha256`.
+  Verify before parsing, and note `timingSafeEqual` **throws** on a length mismatch — a truncated
+  signature has to be refused, not crash the route. A `live_mode: false` delivery is their test
+  button: accept it, do not store it.
 - **An unauthenticated call there redirects rather than 401ing**, so the client sets
   `redirect: "manual"` — following it would turn a bad token into a page of HTML parsed as JSON.
 - **Moving context between groups is dashboard-only, and there is no tool for it.** Same reason
@@ -285,7 +288,7 @@ npm run contrast-check  # resolves the landing CSS cascade and measures what is 
 npm run summary-check   # one real digest end to end: does it keep the decision, the deadline,
                         # the links, and the right picture? (costs money, needs DATABASE_URL)
 npm run transfer-check  # moves real rows between two throwaway groups, including every refusal
-npm run supporters-check # that a hand-typed number and a webhook sender normalise alike
+npm run supporters-check # identity matching, the coffee webhook signature, and the live API
 npm run wapi-check      # the vendored SDK against the real API: envelopes, both error types,
                         # and one real send into a throwaway sandbox session (needs WAPI_PAT)
 npm run sticker-check   # real ffmpeg conversion + the SSRF guard (needs ffmpeg)

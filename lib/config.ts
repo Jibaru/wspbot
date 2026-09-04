@@ -123,6 +123,13 @@ export const config = {
    */
   coffeeToken: () => optional("BUYMEACOFFEE_TOKEN"),
 
+  /**
+   * The signing secret of one Buy Me a Coffee webhook, from the same portal. Each webhook has
+   * its own, and removing and re-adding the webhook is how it is regenerated. Without it the
+   * receiver refuses everything rather than accepting unverified writes.
+   */
+  coffeeWebhookSecret: () => optional("BUYMEACOFFEE_WEBHOOK_SECRET"),
+
   /** Reasoning depth. Low keeps a chat bot snappy; raise it if answers feel shallow. */
   effort: () => optional("BOT_EFFORT") ?? "low",
 

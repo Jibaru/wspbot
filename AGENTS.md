@@ -333,6 +333,16 @@ like a simplification opportunity.
   the same endpoints, and neither knows which repositories this bot may write to. The feature is
   the layer in front of the call: allowlist, per-operation switch, daily ceiling. Swapping the
   client for `gh` would move that decision nowhere useful and add a process spawn per call.
+- **A fine-grained token cannot be granted a repository its account does not own.** Not "granted
+  read-only" — absent from the picker entirely, while still reading it happily when it is public.
+  That is a bot answering questions about a repository all day and refusing to open an issue on
+  it, with a valid token, the right switches and the repository allowlisted. Everything on this
+  side was correct. `explain()` says the rule now, `statuses()` puts the verdict on the dashboard
+  before anyone tries from a chat, and `github-check` asserts that exact case.
+- **A classic token needs no write access to open an issue on a public repository.** Any account
+  may. Treating `permissions.push === false` as "cannot write" would refuse the one arrangement
+  that works for somebody else's public repository, so `verdict()` splits on visibility and scope
+  rather than on push.
 - **Writes fail closed.** An empty `github_repos` means no repository may be written to, not
   "any". A default of "anywhere" would be one migration away from a bot that opens issues on
   strangers' repositories because somebody in a group asked it to.

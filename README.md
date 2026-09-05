@@ -678,11 +678,27 @@ credential here that can create repositories on an account and it is never read 
 table. Notion's per-chat tokens are not sealed, deliberately: they are grants to whichever pages
 somebody shared, not to an account.
 
-**Setting it up.** On the bot's GitHub account, `Settings → Developer settings → Personal access
-tokens → Fine-grained`. Give it `Issues: read and write` and `Contents: read` on the
-repositories it should serve, plus `Administration: read and write` only if it should be able to
-create new ones. Paste it on `/dashboard/github`, tick what it may do, and add the repositories
-it may write to.
+**Which token, and this is the part that catches people.** A fine-grained token can only be
+granted repositories **its own account owns**, or an organisation's where that was allowed. A
+repository belonging to somebody else never appears in its picker, so it cannot be selected, so
+the token has no permission on it — while still reading it perfectly well if it is public. That
+combination produces a bot that answers questions about a repository all day and refuses to open
+an issue on it, with a valid token, the right switches, and the repository on the allowlist.
+
+So:
+
+| The repository belongs to | Use |
+| --- | --- |
+| the bot's own account | a **fine-grained** token, `Issues: read and write` + `Contents: read`, plus `Administration: read and write` only to create new ones |
+| an organisation | a **fine-grained** token, if the organisation has allowed them; otherwise classic |
+| somebody else — your own personal account included | a **classic** token: `public_repo` is enough to open issues on a public repository, since any account may do that. `repo` plus being added as a collaborator for a private one |
+
+The dashboard judges each allowlisted repository against the token that is installed and says
+which of these you are in, so the answer is on the page rather than in a group chat.
+
+**Setting it up.** Make the token on the bot's account under `Settings → Developer settings →
+Personal access tokens`, paste it on `/dashboard/github`, tick what it may do, and add the
+repositories it may write to.
 
 ```bash
 npm run github-check    # the refusals: the allowlist, each switch, the daily ceiling, and that

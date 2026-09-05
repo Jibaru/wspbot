@@ -232,6 +232,71 @@ try {
   }
   check("a read says so too", readThrew.includes("not connected"), `— ${readThrew}`);
 
+  // ── can it actually write there? ───────────────────────────────────────
+  console.log("\ncan it actually write there:");
+  /*
+   * The case that actually happened, first. The token was valid, the switches were on, the
+   * repository was on the allowlist and public — and GitHub refused, because a fine-grained token
+   * belonging to one account cannot be granted anything on a repository owned by another. Nothing
+   * on this side was wrong, which is exactly why the verdict has to say it out loud.
+   */
+  const fineGrained = {
+    kind: "fine-grained" as const,
+    login: "kekito-crafter",
+    visible: true,
+    granted: false,
+    push: false,
+    isPrivate: false,
+    hasIssues: true,
+    scopes: [],
+  };
+  const notGranted = github.verdict(fineGrained);
+  check("a fine-grained token with no grant cannot write", !notGranted.ok);
+  check(
+    "and it explains the rule rather than the symptom",
+    notGranted.why.includes("owns") && notGranted.why.includes("classic"),
+    `— ${notGranted.why}`,
+  );
+  check(
+    "the same token on a repository it was granted can",
+    github.verdict({ ...fineGrained, granted: true }).ok,
+  );
+
+  /*
+   * The other half of the same confusion: a classic token needs no write access at all to open an
+   * issue on a public repository, because any account may. Treating "push: false" as "cannot
+   * write" would refuse the one arrangement that actually works here.
+   */
+  const classic = { ...fineGrained, kind: "classic" as const, scopes: ["public_repo"] };
+  check("a classic token may open issues on a public repository", github.verdict(classic).ok);
+  check(
+    "without being a collaborator",
+    github.verdict(classic).why.includes("without being a collaborator"),
+  );
+  check(
+    "but not on a private one it has no access to",
+    !github.verdict({ ...classic, isPrivate: true, scopes: ["repo"] }).ok,
+  );
+  check(
+    "unless it is a collaborator",
+    github.verdict({ ...classic, isPrivate: true, push: true, scopes: ["repo"] }).ok,
+  );
+  check(
+    "public_repo is not enough for a private repository",
+    !github.verdict({ ...classic, isPrivate: true, push: true }).ok,
+  );
+  check(
+    "issues switched off is its own answer",
+    github.verdict({ ...classic, hasIssues: false }).why.includes("switched off"),
+  );
+  check(
+    "and so is a repository it cannot see",
+    github.verdict({ ...classic, visible: false }).why.includes("cannot see"),
+  );
+
+  check("a token with scopes reads as classic", github.kindOf({ scopes: "repo,gist" }) === "classic");
+  check("one without reads as fine-grained", github.kindOf({ scopes: null }) === "fine-grained");
+
   // ── the real API ───────────────────────────────────────────────────────
   console.log("\nagainst api.github.com:");
   if (!saved?.token) {

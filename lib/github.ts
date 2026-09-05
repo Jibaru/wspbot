@@ -278,6 +278,49 @@ export const writesToday = async (): Promise<number> => {
 
 type Response = { status: number; body: unknown; headers: Headers };
 
+/**
+ * Turning GitHub's refusal into a sentence somebody can act on.
+ *
+ * This exists because of a real one. Opening an issue answered *Resource not accessible by
+ * personal access token*, the bot said "GitHub rejected the authorisation", and that is where the
+ * trail ended — the token was valid, the switches were on, the repository was on the allowlist,
+ * and every one of those was a red herring. The cause was a rule of GitHub's rather than
+ * anything here: **a fine-grained token can only be granted permissions on repositories its own
+ * account owns**, or on an organisation's if the organisation opted in. A repository belonging to
+ * somebody else never appears in that token's picker, so it cannot be selected, so the token has
+ * no permission on it — while still reading it perfectly well if it happens to be public.
+ *
+ * Two hours to find, one sentence to say. So it says it.
+ */
+const explain = (status: number, message: string, method: string, path: string): string => {
+  const writing = method !== "GET";
+  const repo = /^\/repos\/([^/]+\/[^/]+)/.exec(path)?.[1];
+
+  if (status === 401) {
+    return "that token is no longer valid — it may have expired or been revoked. Add a new one on the dashboard";
+  }
+
+  if (status === 403 || (status === 404 && writing)) {
+    // A token without permission is answered 404 rather than 403 on a write, so GitHub does not
+    // confirm that a private repository exists. Both mean the same thing here.
+    return [
+      repo ? `the GitHub account has no permission to do that on ${repo}.` : `${message}.`,
+      "If the token is fine-grained, note that one can only be granted access to repositories its own account owns, or an organisation's where that was allowed — a repository belonging to somebody else cannot be selected in it at all, even though it can still be read when it is public.",
+      "For a repository owned by someone else, use a classic token: `public_repo` is enough to open issues on a public one, and `repo` plus being added as a collaborator for a private one.",
+    ].join(" ");
+  }
+
+  if (status === 404) {
+    return repo
+      ? `${repo} does not exist, or this account cannot see it`
+      : "GitHub could not find that";
+  }
+
+  if (status === 410) return `${repo ?? "that repository"} has issues switched off`;
+
+  return message;
+};
+
 const request = async (
   method: string,
   path: string,
@@ -315,7 +358,7 @@ const request = async (
       if (res.status === 403 && res.headers.get("x-ratelimit-remaining") === "0") {
         throw new GitHubError("GitHub's rate limit is used up for this hour");
       }
-      throw new GitHubError(message);
+      throw new GitHubError(explain(res.status, message, method, path));
     }
 
     return { status: res.status, body, headers: res.headers };
@@ -600,6 +643,139 @@ export const createRepo = async (
     detail: isPrivate ? "private" : "public",
   });
   return { ok: true, url: body.html_url };
+};
+
+// ── can it actually write there? ─────────────────────────────────────────
+
+/**
+ * Whether a repository on the allowlist is one the account can really write to.
+ *
+ * The allowlist says where the bot is *permitted* to write. This says where it *can*, which is a
+ * different question with a different answer, and the gap between them is where the first real
+ * failure of this feature lived: everything on this side was correct and GitHub still refused,
+ * so the dashboard now answers the question before anyone asks it from a chat.
+ */
+export type TokenKind = "classic" | "fine-grained";
+
+export const kindOf = (settings: Pick<Settings, "scopes">): TokenKind =>
+  settings.scopes ? "classic" : "fine-grained";
+
+export type Verdict = { ok: boolean; why: string };
+
+/**
+ * The decision, as a pure function, so it can be asserted without a network.
+ *
+ * The two rules that matter, and neither is obvious:
+ *
+ * - **A fine-grained token can only be granted repositories its own account owns**, or an
+ *   organisation's where that was allowed. Somebody else's repository cannot be selected in it at
+ *   all — so it is not "granted with read", it is absent, while the token still reads it happily
+ *   if it is public. That is what makes this failure so confusing from the outside.
+ * - **A classic token does not need write access to open an issue on a public repository.** Any
+ *   GitHub account may do that. It needs `public_repo`; a private repository needs `repo` *and*
+ *   the account being a collaborator.
+ */
+export const verdict = (input: {
+  kind: TokenKind;
+  login: string | null;
+  visible: boolean;
+  granted: boolean;
+  push: boolean;
+  isPrivate: boolean;
+  hasIssues: boolean;
+  scopes: string[];
+}): Verdict => {
+  const who = input.login ?? "the account";
+
+  if (!input.visible) return { ok: false, why: `${who} cannot see this repository` };
+  if (!input.hasIssues) return { ok: false, why: "issues are switched off on this repository" };
+
+  if (input.kind === "fine-grained") {
+    if (!input.granted) {
+      return {
+        ok: false,
+        why: `this token has no grant on it. A fine-grained token can only be given access to repositories ${who} owns, or an organisation's where that was allowed — one belonging to somebody else cannot be selected in it at all. Use a classic token with public_repo instead, or move the repository somewhere ${who} owns`,
+      };
+    }
+    return { ok: true, why: `${who} was granted this repository` };
+  }
+
+  const scoped = input.isPrivate
+    ? input.scopes.includes("repo")
+    : input.scopes.includes("repo") || input.scopes.includes("public_repo");
+  if (!scoped) {
+    return {
+      ok: false,
+      why: `this classic token lacks the ${input.isPrivate ? "repo" : "public_repo"} scope`,
+    };
+  }
+
+  if (input.isPrivate && !input.push) {
+    return { ok: false, why: `it is private and ${who} is not a collaborator on it` };
+  }
+
+  return {
+    ok: true,
+    why: input.push
+      ? `${who} has write access`
+      : `it is public, so ${who} may open issues on it without being a collaborator`,
+  };
+};
+
+export type RepoStatus = Verdict & { repo: string };
+
+/**
+ * Every allowlisted repository, judged.
+ *
+ * One listing of what the token reaches plus one lookup per repository. Called from the
+ * dashboard only — it is several round trips, and nothing in a chat turn should wait on it.
+ */
+export const statuses = async (): Promise<RepoStatus[]> => {
+  const [list, current] = await Promise.all([allowed(), settings()]);
+  if (list.length === 0) return [];
+
+  const kind = kindOf(current);
+  const scopes = (current.scopes ?? "").split(",").map((sc) => sc.trim()).filter(Boolean);
+
+  const granted = new Set<string>();
+  try {
+    const res = await request("GET", "/user/repos?per_page=100&affiliation=owner,collaborator,organization_member");
+    for (const r of res.body as { full_name: string }[]) granted.add(r.full_name.toLowerCase());
+  } catch {
+    // A token that cannot list repositories still judges below on what each lookup says.
+  }
+
+  return Promise.all(
+    list.map(async ({ repo: name }): Promise<RepoStatus> => {
+      try {
+        const res = await request("GET", `/repos/${name}`);
+        const body = res.body as {
+          private: boolean;
+          has_issues: boolean;
+          permissions?: { push?: boolean };
+        };
+        return {
+          repo: name,
+          ...verdict({
+            kind,
+            login: current.login,
+            visible: true,
+            granted: granted.has(name),
+            push: body.permissions?.push ?? false,
+            isPrivate: body.private,
+            hasIssues: body.has_issues,
+            scopes,
+          }),
+        };
+      } catch (err) {
+        return {
+          repo: name,
+          ok: false,
+          why: err instanceof Error ? err.message : String(err),
+        };
+      }
+    }),
+  );
 };
 
 /** Organisations the token can act in, for the owner picker. */

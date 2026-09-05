@@ -21,14 +21,21 @@ import {
 export const dynamic = "force-dynamic";
 
 export default async function GithubPage() {
-  const [settings, repos, log, enabled, orgs] = await Promise.all([
+  const [settings, repos, log, enabled, orgs, statuses] = await Promise.all([
     settle(github.settings()),
     settle(github.allowed()),
     settle(github.history(12)),
     settle(features.enabled()),
     // Fails quietly when no token is stored, which is the ordinary state before connecting.
     settle(github.orgs()),
+    /*
+     * Asked here rather than left for a chat to discover. Being on the allowlist means the bot is
+     * *permitted* to write there; this says whether it *can*, and the two came apart the first
+     * time this feature was used in earnest.
+     */
+    settle(github.statuses()),
   ]);
+  const statusOf = new Map((statuses ?? []).map((s) => [s.repo, s]));
 
   const on = enabled?.has("github") ?? true;
   const s = settings;
@@ -64,8 +71,17 @@ export default async function GithubPage() {
                   <span className="meta">
                     {s?.scopes
                       ? `classic token, scopes: ${s.scopes}`
-                      : "fine-grained token — GitHub does not report its scopes here, so what it can reach is whatever you selected when you made it"}
+                      : "fine-grained token — GitHub reports no scopes for these, so what it reaches is whatever was selected when it was made"}
                   </span>
+                  {!s?.scopes && (
+                    <span className="meta">
+                      A fine-grained token can only be granted repositories <strong>{s?.login}</strong>{" "}
+                      owns, or an organisation&rsquo;s where that was allowed. One belonging to
+                      somebody else cannot be selected in it at all — it will still be read when it
+                      is public, and every write to it refused. For those, use a classic token with{" "}
+                      <code>public_repo</code>.
+                    </span>
+                  )}
                 </div>
                 <form action={disconnectGithub}>
                   <button type="submit" className="linky danger">
@@ -196,11 +212,19 @@ export default async function GithubPage() {
           </p>
         ) : (
           <ul className="rows">
-            {repos.map((r) => (
+            {repos.map((r) => {
+              const status = statusOf.get(r.repo);
+              return (
               <li key={r.repo}>
                 <div className="grow">
                   <strong>{r.repo}</strong>
                   <span className="meta">added {when(r.addedAt)}</span>
+                  {status && (
+                    <span className={status.ok ? "meta" : "meta bad"}>
+                      {status.ok ? "✓ " : "cannot write here — "}
+                      {status.why}
+                    </span>
+                  )}
                 </div>
                 <form action={disallowRepo}>
                   <input type="hidden" name="repo" value={r.repo} />
@@ -209,7 +233,8 @@ export default async function GithubPage() {
                   </button>
                 </form>
               </li>
-            ))}
+              );
+            })}
           </ul>
         )}
 

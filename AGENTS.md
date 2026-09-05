@@ -351,6 +351,9 @@ like a simplification opportunity.
   is still global; a general per-chat table is still a rewrite, not a tweak.
 - **"Only these groups" with no groups means nowhere.** The inverse would be an integration that
   became available everywhere the moment somebody cleared the list. `github-check` states it.
+  It is also the state somebody saves by accident, and the symptom is a bot answering "I do not
+  have access" in every chat while the dashboard shows every permission ticked — because a chat
+  it is off in is never told GitHub exists. The page now says so before it can be wondered about.
 - **A new `github_settings` column has to be added in four places**, and the compiler catches
   only two of them: the DDL, `Settings`/`COLUMNS`/`setPermissions` in `lib/github.ts`, the
   dashboard form, and `github-check`'s restore. That restore reads the real row and puts it back,

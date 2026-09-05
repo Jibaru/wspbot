@@ -252,6 +252,30 @@ export default async function GithubPage() {
 
       <h2>Where it can be used</h2>
       <div className="panel">
+        {/*
+          * The state that reads as a broken integration: "only these groups", with none. It is the
+          * honest meaning of what was chosen and it switches GitHub off everywhere, so the page
+          * has to say so — the alternative is a bot that answers "I do not have access" in every
+          * chat while the dashboard shows five permissions happily ticked.
+          */}
+        {scope === "listed" && (chats?.length ?? 0) === 0 && (
+          <div className="notice" style={{ marginBottom: "1rem" }}>
+            <strong>GitHub is switched off in every chat.</strong> &ldquo;Only the groups ticked
+            below&rdquo; is selected and none are ticked, so nothing can reach it — the bot will
+            not even know it has GitHub. Tick a group, or choose every chat.
+          </div>
+        )}
+        <p className="meta" style={{ marginTop: 0 }}>
+          Reachable from{" "}
+          <strong>
+            {scope === "everywhere"
+              ? "every chat"
+              : (chats?.length ?? 0) === 0
+                ? "nowhere"
+                : `${chats?.length} group${chats?.length === 1 ? "" : "s"}`}
+          </strong>
+          .
+        </p>
         <p className="meta" style={{ marginTop: 0 }}>
           This is a different question from the list below: that one is <em>where writes land</em>,
           this one is <em>who may ask</em>. A chat GitHub is switched off in is not told it exists

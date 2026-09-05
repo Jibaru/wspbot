@@ -211,6 +211,21 @@ export const FEATURES: Feature[] = [
     tools: ["render_html"],
   },
   {
+    key: "github",
+    title: "Works with GitHub",
+    detail:
+      "Looks up repositories and issues, and — where it has been given permission — opens issues, comments on them and creates repositories, as the bot's own GitHub account. Reading is open; every write needs its own switch, only lands on repositories named on the dashboard, and is recorded with who asked for it.",
+    claim: "look things up on GitHub, and open issues where it is allowed to",
+    tools: [
+      "github_repo",
+      "github_issues",
+      "github_my_repos",
+      "github_open_issue",
+      "github_comment",
+      "github_create_repo",
+    ],
+  },
+  {
     key: "chime",
     title: "Chimes in on its own",
     detail:

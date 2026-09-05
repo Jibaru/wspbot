@@ -25,6 +25,7 @@ import * as reminders from "./reminders";
 import * as features from "./features";
 import * as summaries from "./summaries";
 import * as chime from "./chime";
+import * as github from "./github";
 import * as supporters from "./supporters";
 import * as roadmap from "./roadmap";
 import { render as renderHtml, capture } from "./render-html";
@@ -145,7 +146,7 @@ const systemPrompt = async (turn: Turn, on: Set<string>): Promise<string> => {
   const quoted = has("quoted") ? turn.quoted : undefined;
   const source = has("stickers_make") ? stickerSource(turn) : undefined;
 
-  const [memories, stickerList, notionConnection, openTasks, doneTasks, scheduled] =
+  const [memories, stickerList, notionConnection, openTasks, doneTasks, scheduled, gh, ghRepos] =
     await Promise.all([
       has("memory") ? memory.list(turn.chat).then(memory.render) : Promise.resolve(""),
       has("stickers_send") ? stickers.list().then(stickers.render) : Promise.resolve(""),
@@ -153,6 +154,8 @@ const systemPrompt = async (turn: Turn, on: Set<string>): Promise<string> => {
       has("tasks") ? tasks.open(turn.chat) : Promise.resolve([]),
       has("tasks") ? tasks.recentlyDone(turn.chat) : Promise.resolve([]),
       has("reminders") ? reminders.forChat(turn.chat) : Promise.resolve([]),
+      has("github") ? github.settings() : Promise.resolve(null),
+      has("github") ? github.allowed() : Promise.resolve([]),
     ]);
 
   /**
@@ -210,6 +213,36 @@ const systemPrompt = async (turn: Turn, on: Set<string>): Promise<string> => {
     ...(has("screenshot")
       ? [
           "- `screenshot_page` opens a link in a real browser and sends a picture of it. Use it when somebody wants to *see* a page rather than read about it. It signs in nowhere, so anything behind a login comes back as the login screen, and it refuses any address inside a private network.",
+        ]
+      : []),
+    ...(gh?.login
+      ? [
+          `- GitHub, as the account **${gh.login}**. \`github_repo\` looks a repository up, \`github_issues\` lists its issues, \`github_my_repos\` lists what that account has.`,
+          ...(gh.canOpenIssues || gh.canComment || gh.canCreateRepos
+            ? [
+                `- You may also ${[
+                  gh.canOpenIssues ? "open issues" : "",
+                  gh.canComment ? "comment on them" : "",
+                  gh.canCreateRepos
+                    ? `create repositories${gh.reposPrivate ? " (always private)" : ""}`
+                    : "",
+                ]
+                  .filter(Boolean)
+                  .join(", ")}.${
+                  ghRepos.length
+                    ? ` Issues and comments only land on: ${ghRepos.map((r) => r.repo).join(", ")}. Anywhere else is refused, and that is a setting rather than something to work around.`
+                    : " No repository has been approved for writing to yet, so those will be refused until one is."
+                }`,
+                "- Writing to GitHub is public and permanent, and every issue carries the name of whoever asked. Open one when somebody actually wants it filed — a bug, a request, something to remember — and not to acknowledge a passing remark. Say what you filed and link it.",
+              ]
+            : [
+                "- You can only read. Opening issues, commenting and creating repositories are all switched off here, so say so plainly rather than trying.",
+              ]),
+        ]
+      : []),
+    ...(has("github") && !gh?.login
+      ? [
+          "- GitHub is switched on but no account is connected yet, so anything to do with GitHub will fail. Say that it needs connecting on the dashboard.",
         ]
       : []),
     ...(has("usage_report")
@@ -1162,6 +1195,138 @@ const toolsFor = (turn: Turn, sent: string[]) => ({
         const why = err instanceof Error ? err.message : String(err);
         console.error("[render] failed:", why);
         return `Could not render that: ${why}. If it referenced anything by URL, that is why — nothing is fetched. Try again with everything inline.`;
+      }
+    },
+  }),
+
+  github_repo: tool({
+    description:
+      "Look up a repository on GitHub: what it is, its language, stars, open issue count, when it was last pushed. Takes owner/name, or a github.com link.",
+    inputSchema: z.object({
+      repo: z.string().describe('Like "crafter-station/wapi", or the URL of the repository.'),
+    }),
+    execute: async ({ repo }) => {
+      try {
+        const r = await github.repo(repo);
+        return JSON.stringify(r);
+      } catch (err) {
+        return err instanceof Error ? err.message : String(err);
+      }
+    },
+  }),
+
+  github_issues: tool({
+    description:
+      "List issues on a repository. Pull requests are marked as such in the result — do not report them as issues.",
+    inputSchema: z.object({
+      repo: z.string().describe('Like "Jibaru/wspbot".'),
+      state: z.enum(["open", "closed", "all"]).optional().describe("Open by default."),
+      limit: z.number().int().optional().describe("Up to 50. Ten or so reads well in a chat."),
+    }),
+    execute: async ({ repo, state, limit }) => {
+      try {
+        const found = await github.issues(repo, {
+          ...(state ? { state } : {}),
+          ...(limit ? { limit } : {}),
+        });
+        if (found.length === 0) return `No ${state ?? "open"} issues on ${repo}.`;
+        return JSON.stringify(found.map(({ body, ...rest }) => rest));
+      } catch (err) {
+        return err instanceof Error ? err.message : String(err);
+      }
+    },
+  }),
+
+  github_my_repos: tool({
+    description:
+      "List the repositories your own GitHub account can see, most recently pushed first. Use it when somebody asks what you have, or what you have been working on.",
+    inputSchema: z.object({
+      limit: z.number().int().optional().describe("Up to 100; twenty is plenty for a chat."),
+    }),
+    execute: async ({ limit }) => {
+      try {
+        const repos = await github.mine(limit ?? 20);
+        if (repos.length === 0) return "That account has no repositories yet.";
+        return JSON.stringify(
+          repos.map((r) => ({
+            name: r.fullName,
+            private: r.private,
+            description: r.description,
+            language: r.language,
+            stars: r.stars,
+            pushed: r.pushedAt,
+          })),
+        );
+      } catch (err) {
+        return err instanceof Error ? err.message : String(err);
+      }
+    },
+  }),
+
+  github_open_issue: tool({
+    description:
+      "Open an issue on a repository. Only works on repositories this deployment has been told it may write to, and it is refused otherwise — that refusal is a setting, not a mistake to work around. Write the issue properly: a title somebody could scan, and a body with what was asked, by whom, and anything they said that a maintainer would need.",
+    inputSchema: z.object({
+      repo: z.string().describe('Like "Jibaru/wspbot".'),
+      title: z.string().describe("One line. Specific — not 'bug' or 'idea'."),
+      body: z.string().optional().describe("Markdown. Say what is being asked and why."),
+      labels: z.array(z.string()).optional().describe("Only labels that already exist there."),
+    }),
+    execute: async ({ repo, title, body, labels }) => {
+      try {
+        const result = await github.openIssue(
+          repo,
+          { title, ...(body ? { body } : {}), ...(labels ? { labels } : {}) },
+          { chat: turn.chat, who: turn.senderName },
+        );
+        return result.ok
+          ? `Opened ${repo}#${result.number}: ${result.url}. Give them that link.`
+          : `Not opened — ${result.why}.`;
+      } catch (err) {
+        return err instanceof Error ? err.message : String(err);
+      }
+    },
+  }),
+
+  github_comment: tool({
+    description:
+      "Add a comment to an existing issue or pull request. Same permission rules as opening one.",
+    inputSchema: z.object({
+      repo: z.string(),
+      number: z.number().int().describe("The issue or PR number."),
+      text: z.string().describe("Markdown."),
+    }),
+    execute: async ({ repo, number, text }) => {
+      try {
+        const result = await github.comment(repo, number, text, {
+          chat: turn.chat,
+          who: turn.senderName,
+        });
+        return result.ok ? `Commented: ${result.url}` : `Not commented — ${result.why}.`;
+      } catch (err) {
+        return err instanceof Error ? err.message : String(err);
+      }
+    },
+  }),
+
+  github_create_repo: tool({
+    description:
+      "Create a new repository under your own GitHub account. Private unless this deployment has been configured to allow public ones — do not promise a public repository, say what was actually made.",
+    inputSchema: z.object({
+      name: z.string().describe("Letters, digits, dots, dashes and underscores."),
+      description: z.string().optional(),
+    }),
+    execute: async ({ name, description }) => {
+      try {
+        const result = await github.createRepo(
+          { name, ...(description ? { description } : {}) },
+          { chat: turn.chat, who: turn.senderName },
+        );
+        return result.ok
+          ? `Created it: ${result.url}. It is initialised with a README, and I may now open issues on it.`
+          : `Not created — ${result.why}.`;
+      } catch (err) {
+        return err instanceof Error ? err.message : String(err);
       }
     },
   }),

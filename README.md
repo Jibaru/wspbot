@@ -35,10 +35,10 @@ bot   → Done.
 |  |  |
 | --- | --- |
 | **What it is** | One Next.js container: a webhook that answers WhatsApp, and a dashboard that decides what it may do |
-| **Abilities** | 23 switchable features over 38 model tools, plus 3 that are always on |
-| **Storage** | Postgres, 19 tables — memory, history, stickers, schedules, supporters, roadmap, spend |
+| **Abilities** | 24 switchable features over 44 model tools, plus 3 that are always on |
+| **Storage** | Postgres, 22 tables — memory, history, stickers, schedules, supporters, roadmap, spend |
 | **Runs on** | A Dokploy VPS behind Traefik, alongside the WhatsApp gateway it talks to |
-| **Guarded by** | 17 check scripts that exercise the real thing rather than asserting about it |
+| **Guarded by** | 18 check scripts that exercise the real thing rather than asserting about it |
 
 ## Contents
 
@@ -48,7 +48,7 @@ bot   → Done.
 
 **Use it** — [The landing page](#the-landing-page) · [The dashboard](#the-dashboard) · [Signing in](#signing-in) · [When it replies](#when-it-replies)
 
-**What it can do** — [Chiming in](#chiming-in) · [Put things in the chat](#what-it-can-put-in-the-chat) · [Stickers](#stickers) · [Rendering HTML](#rendering-html) · [Screenshots](#a-picture-of-a-real-page) · [Memory](#memory) · [The checklist](#the-checklist) · [Reactions](#reactions) · [Scheduled reminders](#scheduled-reminders) · [Scheduled summaries](#scheduled-summaries) · [Notion](#notion) · [Google Sheets](#google-sheets) · [Knows what it is](#what-it-knows-about-itself)
+**What it can do** — [GitHub](#github) · [Chiming in](#chiming-in) · [Put things in the chat](#what-it-can-put-in-the-chat) · [Stickers](#stickers) · [Rendering HTML](#rendering-html) · [Screenshots](#a-picture-of-a-real-page) · [Memory](#memory) · [The checklist](#the-checklist) · [Reactions](#reactions) · [Scheduled reminders](#scheduled-reminders) · [Scheduled summaries](#scheduled-summaries) · [Notion](#notion) · [Google Sheets](#google-sheets) · [Knows what it is](#what-it-knows-about-itself)
 
 **Keep it honest** — [Rate limiting](#rate-limiting) · [Usage and cost](#usage-and-cost) · [Moving context between groups](#moving-context-between-groups)
 
@@ -69,7 +69,7 @@ flowchart LR
     WA(["WhatsApp<br/>groups"])
     BROWSER(["Browser"])
     OPENAI(["OpenAI<br/>model · vision · speech · images<br/>web search"])
-    EXT(["Notion · Google Sheets"])
+    EXT(["Notion · Google Sheets · GitHub"])
 
     subgraph gw["wapi · self-hosted gateway, same VPS"]
         SESSION["session<br/>push only, never polled"]
@@ -81,15 +81,15 @@ flowchart LR
         GATE["mentions<br/>is this message for me?"]
         LIMIT["rate limit<br/>before anything costs money"]
         REC["recorder<br/>untagged, recorded groups only"]
-        AGENT["agent<br/>system prompt + 38 tools"]
+        AGENT["agent<br/>system prompt + 44 tools"]
         TIMERS["timers<br/>session 2m · reminders 30s · digests 1m · chime-ins 1m"]
-        FEAT["features<br/>23 switches own every tool<br/>read from Postgres every turn"]
+        FEAT["features<br/>24 switches own every tool<br/>read from Postgres every turn"]
         FF["ffmpeg · Chromium<br/>stickers · voice · video · rendering"]
         PROXY["proxy.ts<br/>gates every page but the root"]
         PAGES["landing · /dashboard"]
     end
 
-    PG[("Postgres<br/>19 tables")]
+    PG[("Postgres<br/>22 tables")]
 
     WA -->|"every message"| SESSION
     SESSION -->|"signed webhook"| HOOK
@@ -637,6 +637,58 @@ sunset that repository. The direct API costs one file and no infrastructure.
 Pinned to Notion API version `2026-03-11`. Versions are dated and response shapes change between
 them, so the header is explicit rather than left to a default.
 
+## GitHub
+
+The bot has its own GitHub account. It can look repositories and issues up for anyone, and —
+where it has been given permission — open issues, comment on them, and create repositories.
+Configured entirely on `/dashboard/github`; there is no environment variable to set.
+
+**Not `gh`, and not an MCP server.** Both are wrappers over the same REST endpoints, so neither
+would move this feature forward. The hard part is not calling GitHub — it is that *anyone in a
+group can ask*. "Open an issue on that repo" is a sentence a stranger can type into a chat, so
+what matters is the layer in front of the call: an allowlist, a switch per operation, a daily
+ceiling. `gh` has no idea which repositories this bot may write to. That decision has to live
+here, which means the call may as well be a `fetch` — and one without a 30MB package and a
+process spawn per call.
+
+**Two layers of permission, and they are not interchangeable.**
+
+1. **What the token can do**, decided on GitHub when it is issued. This is the real boundary:
+   nothing here can exceed it. A fine-grained token scoped to three repositories is worth more
+   than every switch below, which is why the page asks for one of those.
+2. **What the bot may do with it**, decided on the dashboard — always the tighter of the two,
+   because the token is issued once and the bot is exposed to a group chat all day.
+
+Reading is open: a public repository is public, and gating "how many stars does X have" would
+make the feature useless without making anything safer. Writing is off entirely until switched
+on, and then:
+
+- it lands **only on repositories named on the dashboard** — an empty list means nowhere, which
+  is the correct state for an account that has just been connected
+- it is **capped per day**, counted across every chat, so a bad day has a ceiling
+- every issue and comment **carries the name of whoever asked for it**, and is recorded with the
+  chat it came from. An issue that appears on a repository with no idea where it came from is
+  what makes a maintainer switch this off
+- a repository the bot creates is **private unless you decided otherwise in advance** — "make it
+  public" from a group chat is exactly the request that should not be enough on its own
+
+The token is sealed with AES-256-GCM before it is stored, keyed off `AUTH_SECRET`. It is the one
+credential here that can create repositories on an account and it is never read back by a person
+— the page shows four characters — so there is no cost to it being unreadable in a dump of that
+table. Notion's per-chat tokens are not sealed, deliberately: they are grants to whichever pages
+somebody shared, not to an account.
+
+**Setting it up.** On the bot's GitHub account, `Settings → Developer settings → Personal access
+tokens → Fine-grained`. Give it `Issues: read and write` and `Contents: read` on the
+repositories it should serve, plus `Administration: read and write` only if it should be able to
+create new ones. Paste it on `/dashboard/github`, tick what it may do, and add the repositories
+it may write to.
+
+```bash
+npm run github-check    # the refusals: the allowlist, each switch, the daily ceiling, and that
+                        # nothing works at all before an account is connected
+```
+
 ## Google Sheets
 
 Share a spreadsheet link and ask about it — *"what's missing?"*, *"who hasn't replied?"* — and
@@ -946,6 +998,7 @@ npm run voice-check     # voice notes really are Ogg/Opus mono 48kHz, per ffprob
 npm run video-check     # video really is H.264/yuv420p/AAC in MP4, per ffprobe
 npm run models-check    # the configured models accept the parameters this app sends (costs money)
 npm run draw-check      # generates one real image and checks alpha survives (costs money)
+npm run github-check    # every GitHub refusal, and one real read (needs DATABASE_URL)
 npm run chime-check     # chime-in restraint: cadence, daily cap, quiet hours, double-claim
 npm run render-check    # a real Chromium render, and a real page captured: a PNG, a table that
                         # stays a table, and every private address refused
@@ -1198,6 +1251,8 @@ lib/video.ts                     anything -> H.264/AAC MP4, the format that play
 lib/ffmpeg.ts                    shared ffmpeg runner and scratch directories
 lib/fetch-media.ts               guarded remote downloads (SSRF, redirects, size cap)
 
+lib/github.ts                    GitHub: the account, the permission layer, the REST client
+lib/secret-box.ts                sealing the one credential that should not be legible in a dump
 lib/notion.ts                    Notion OAuth and the page operations
 lib/oauth-state.ts               the signed state that binds a connection to a chat
 lib/sheets.ts                    Google Sheets, read and write

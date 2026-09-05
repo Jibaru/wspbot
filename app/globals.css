@@ -678,6 +678,13 @@ label.pick > span {
   overflow-wrap: anywhere;
 }
 
+/* A stack of checkbox rows inside a form grid, which is otherwise one control per row. */
+.checks {
+  display: grid;
+  gap: 0.55rem;
+  margin-top: 0.25rem;
+}
+
 .move-controls {
   display: grid;
   gap: 0.5rem;

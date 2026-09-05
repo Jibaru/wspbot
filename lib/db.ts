@@ -289,6 +289,56 @@ const migrate = async (): Promise<void> => {
       at   timestamptz not null default now()
     );
     create index if not exists chimes_chat_day_idx on chimes (chat, day);
+
+    /*
+     * GitHub, as one account this deployment acts as. One row, always id 1: two rows would mean
+     * every call site had to answer "which account?" for no gain.
+     *
+     * The token is sealed with AES-256-GCM keyed off AUTH_SECRET (lib/secret-box.ts) rather than
+     * stored as text. It is the one credential here that can create repositories on an account,
+     * and it is never read back by a person — the dashboard shows four characters — so there is
+     * no cost to it being unreadable in a dump of this table.
+     */
+    create table if not exists github_settings (
+      id                 integer primary key default 1 check (id = 1),
+      token              text,
+      login              text,
+      scopes             text,
+      hint               text,
+      owner              text,
+      -- Reads need none of these. Every write is off until somebody turns it on deliberately.
+      can_open_issues    boolean     not null default false,
+      can_comment        boolean     not null default false,
+      can_create_repos   boolean     not null default false,
+      repos_private      boolean     not null default true,
+      max_writes_per_day integer     not null default 10,
+      connected_at       timestamptz
+    );
+
+    /*
+     * Which repositories may be written to. Empty means none, which is the right state for a
+     * token that has just been added: anyone in a group can ask the bot to open an issue, so the
+     * list is what decides where that can land. Reads are not gated on it.
+     */
+    create table if not exists github_repos (
+      repo     text primary key,
+      added_at timestamptz not null default now()
+    );
+
+    /*
+     * Everything written to GitHub, kept. It is the daily cap's counter and the answer to "who
+     * asked for this issue?", which is the first question anybody would have.
+     */
+    create table if not exists github_actions (
+      id     bigserial primary key,
+      at     timestamptz not null default now(),
+      chat   text,
+      who    text,
+      action text        not null,
+      target text,
+      detail text
+    );
+    create index if not exists github_actions_at_idx on github_actions (at desc);
     -- Deliveries retry, and the same message must not appear twice in a digest.
     create unique index if not exists logged_messages_unique
       on logged_messages (chat, message_id);

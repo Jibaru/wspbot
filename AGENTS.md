@@ -27,8 +27,8 @@ WhatsApp ──▶ wapi ──POST /api/wapi/webhook──▶ this app
                                                  └─▶ wapi, via the vendored SDK ──▶ WhatsApp
 
 you ──▶ / (public) ──▶ /login ──▶ proxy.ts ──▶ /dashboard/{features,limits,stickers,
-                                       │           memory,reminders,summaries,supporters,
-                                       │           move,usage}
+                                       │           memory,reminders,summaries,chime,
+                                       │           github,supporters,roadmap,move,usage}
                                        └─▶ features table ──▶ which tools a turn is given
 ```
 
@@ -94,6 +94,8 @@ lib/fetch-media.ts               guarded remote downloads (SSRF)
 **Integrations and plumbing**
 
 ```
+lib/github.ts                    GitHub: the account, the permission layer, the REST client
+lib/secret-box.ts                AES-256-GCM sealing for the GitHub token (and only that)
 lib/notion.ts                    Notion OAuth + page operations
 lib/oauth-state.ts               signed OAuth state (no server-only, so it is testable)
 lib/sheets.ts                    Google Sheets read and write
@@ -327,6 +329,24 @@ like a simplification opportunity.
   dotted spelling passed the metadata endpoint through as public — in every feature taking a URL,
   stickers included. `isPrivateIPv6` now expands the address into eight groups; every embedded
   form (mapped, compatible, NAT64) has to reach the same answer, and `sticker-check` names each.
+- **GitHub is the REST API on purpose — not `gh`, not an MCP server.** Both are wrappers over
+  the same endpoints, and neither knows which repositories this bot may write to. The feature is
+  the layer in front of the call: allowlist, per-operation switch, daily ceiling. Swapping the
+  client for `gh` would move that decision nowhere useful and add a process spawn per call.
+- **Writes fail closed.** An empty `github_repos` means no repository may be written to, not
+  "any". A default of "anywhere" would be one migration away from a bot that opens issues on
+  strangers' repositories because somebody in a group asked it to.
+- **`/repos/{repo}/issues` returns pull requests too.** Three of the three newest rows on
+  `vercel/next.js` are PRs. Reporting them as issues is a wrong answer nobody would question, so
+  `toIssue` marks each one and the tool tells the model to say which is which.
+- **Only the GitHub token is sealed, and that is deliberate.** `lib/secret-box.ts` exists for one
+  credential: it can create repositories on an account, and no person ever reads it back. Notion's
+  per-chat tokens are stored as text because they are grants to whichever pages somebody shared.
+  Do not conclude from the one that this database encrypts secrets generally.
+- **`github-check` reads the real settings row and puts it back.** That row holds this
+  deployment's actual token; a check that clobbered it would silently disconnect GitHub, which is
+  worse than a failing assertion. It never performs a write against GitHub — every assertion
+  stops at the decision, because the decision is the feature.
 - **Groups only, and only when tagged.** DMs are ignored by default (`BOT_REPLY_TO_DMS`).
   Stickers are the sole exception: collected untagged, silently, never answered.
 
@@ -370,6 +390,8 @@ npm run features-check  # every tool belongs to a switch, every switch does some
                         # README's figures still match the code
 npm run cron-check      # the cron evaluator, including both daylight-saving transitions
 npm run contrast-check  # resolves the landing CSS cascade and measures what is readable
+npm run github-check    # every GitHub refusal — the allowlist, each switch, the daily ceiling,
+                        # and that nothing works before an account is connected
 npm run chime-check     # chime-in restraint: the cadence, the daily cap, quiet hours across
                         # midnight, and that claiming twice cannot double-fire
 npm run summary-check   # one real digest end to end: does it keep the decision, the deadline,

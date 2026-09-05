@@ -224,6 +224,8 @@ export const FEATURES: Feature[] = [
       "github_comment",
       "github_create_repo",
       "github_pages",
+      "github_put_files",
+      "github_publish_stickers",
     ],
   },
   {

@@ -89,6 +89,62 @@ export const list = async (): Promise<Sticker[]> => {
   return rows.map(toSticker);
 };
 
+/**
+ * Exporting the library somewhere else, in two steps: what is there, then only what is wanted.
+ *
+ * Split deliberately. The library is 313 stickers and 49MB, and a caller that publishes 20MB of
+ * it has no business pulling the other 29MB across the wire to decide that — the first version
+ * did, and a `select bytes` over the whole table is heavy enough to be cancelled outright.
+ * `sizes` is metadata and a byte count; `bytesFor` fetches exactly the chosen rows.
+ *
+ * A sticker whose bytes were never stored — the library predates that column — has no size and
+ * is left out, since there is nothing to export.
+ */
+export type StickerSize = {
+  id: string;
+  label: string;
+  description: string | null;
+  size: number;
+};
+
+export const sizes = async (limit = 500): Promise<{ stickers: StickerSize[]; skipped: number }> => {
+  const rows = await query<{
+    id: number;
+    label: string;
+    description: string | null;
+    size: number | null;
+  }>(
+    "select id, label, description, length(bytes) as size from stickers order by id desc limit $1",
+    [limit],
+  );
+
+  const stickers = rows
+    .filter((r) => r.size !== null && Number(r.size) > 0)
+    .map((r) => ({
+      id: String(r.id),
+      label: r.label,
+      description: r.description,
+      size: Number(r.size),
+    }));
+
+  return { stickers, skipped: rows.length - stickers.length };
+};
+
+/** The bytes of particular stickers, keyed by id. Only ever called with a list that fits. */
+export const bytesFor = async (ids: string[]): Promise<Map<string, Buffer>> => {
+  if (ids.length === 0) return new Map();
+  const numeric = ids.map(Number).filter((n) => Number.isInteger(n));
+  const rows = await query<{ id: number; bytes: Buffer | null }>(
+    "select id, bytes from stickers where id = any($1::int[])",
+    [numeric],
+  );
+  return new Map(
+    rows
+      .filter((r): r is { id: number; bytes: Buffer } => r.bytes !== null)
+      .map((r) => [String(r.id), Buffer.from(r.bytes)]),
+  );
+};
+
 export const byId = async (id: string): Promise<Sticker | null> => {
   const numeric = parseId(id);
   if (numeric === null) return null;

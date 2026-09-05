@@ -24,6 +24,7 @@
 
 import { query } from "../lib/db.js";
 import * as github from "../lib/github.js";
+import * as stickerSite from "../lib/sticker-site.js";
 import { seal, open } from "../lib/secret-box.js";
 
 let failures = 0;
@@ -51,6 +52,7 @@ type Saved = {
   can_comment: boolean;
   can_create_repos: boolean;
   can_deploy_pages: boolean;
+  can_push_files: boolean;
   repos_private: boolean;
   max_writes_per_day: number;
   connected_at: Date | null;
@@ -64,7 +66,7 @@ type Saved = {
 
 const saved = (
   await query<Saved>(
-    "select token, login, scopes, hint, owner, can_open_issues, can_comment, can_create_repos, can_deploy_pages, repos_private, max_writes_per_day, connected_at, chat_mode from github_settings where id = 1",
+    "select token, login, scopes, hint, owner, can_open_issues, can_comment, can_create_repos, can_deploy_pages, can_push_files, repos_private, max_writes_per_day, connected_at, chat_mode from github_settings where id = 1",
   )
 )[0];
 
@@ -72,8 +74,8 @@ const restore = async () => {
   await query("delete from github_settings where id = 1");
   if (saved) {
     await query(
-      `insert into github_settings (id, token, login, scopes, hint, owner, can_open_issues, can_comment, can_create_repos, can_deploy_pages, repos_private, max_writes_per_day, connected_at, chat_mode)
-       values (1, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+      `insert into github_settings (id, token, login, scopes, hint, owner, can_open_issues, can_comment, can_create_repos, can_deploy_pages, can_push_files, repos_private, max_writes_per_day, connected_at, chat_mode)
+       values (1, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
       [
         saved.token,
         saved.login,
@@ -84,6 +86,7 @@ const restore = async () => {
         saved.can_comment,
         saved.can_create_repos,
         saved.can_deploy_pages,
+        saved.can_push_files,
         saved.repos_private,
         saved.max_writes_per_day,
         saved.connected_at,
@@ -143,7 +146,7 @@ try {
      values (1, $1, 'check-account', false, false, false)
      on conflict (id) do update set token = excluded.token, login = excluded.login,
        can_open_issues = false, can_comment = false, can_create_repos = false,
-       can_deploy_pages = false`,
+       can_deploy_pages = false, can_push_files = false`,
     [seal("ghp_not_a_real_token")],
   );
 
@@ -163,6 +166,15 @@ try {
 
   const pagesOff = await github.deployPages(FAKE, {}, { who: MARK });
   check("so is publishing a site", !pagesOff.ok);
+
+  const filesOff = await github.putFiles(
+    FAKE,
+    [{ path: "index.html", content: "<h1>no</h1>" }],
+    `${MARK} should not land`,
+    {},
+    { who: MARK },
+  );
+  check("so is committing files", !filesOff.ok);
   check(
     "and it names that switch rather than another",
     !pagesOff.ok && pagesOff.why.includes("publishing sites"),
@@ -177,6 +189,7 @@ try {
     canComment: true,
     canCreateRepos: true,
     canDeployPages: true,
+    canPushFiles: true,
     reposPrivate: true,
     maxWritesPerDay: 10,
   });
@@ -198,6 +211,15 @@ try {
    */
   const pagesElsewhere = await github.deployPages(STRANGER, {}, { who: MARK });
   check("and publishing a site somewhere unlisted", !pagesElsewhere.ok);
+
+  const filesElsewhere = await github.putFiles(
+    STRANGER,
+    [{ path: "index.html", content: "<h1>no</h1>" }],
+    `${MARK} nope`,
+    {},
+    { who: MARK },
+  );
+  check("and committing files there", !filesElsewhere.ok);
   check(
     "for the list, not the switch",
     !pagesElsewhere.ok && pagesElsewhere.why.includes("not on the list"),
@@ -218,6 +240,7 @@ try {
     canComment: true,
     canCreateRepos: true,
     canDeployPages: true,
+    canPushFiles: true,
     reposPrivate: true,
     maxWritesPerDay: 2,
   });
@@ -358,6 +381,92 @@ try {
 
   check("a token with scopes reads as classic", github.kindOf({ scopes: "repo,gist" }) === "classic");
   check("one without reads as fine-grained", github.kindOf({ scopes: null }) === "fine-grained");
+
+  console.log("\nwhat it will not commit:");
+  /*
+   * The section above deletes the settings row to check the unconnected case, so the switches
+   * have to be put back before asking about shapes — otherwise every answer here is "GitHub is
+   * not connected", and the check passes while testing nothing.
+   */
+  await query(
+    `insert into github_settings (id, token, login, can_push_files, max_writes_per_day)
+     values (1, $1, 'check-account', true, 50)
+     on conflict (id) do update set token = excluded.token, login = excluded.login,
+       can_push_files = true, max_writes_per_day = 50`,
+    [seal("ghp_not_a_real_token")],
+  );
+  const bad = async (files: { path: string; content: string }[]): Promise<string> => {
+    const r = await github.putFiles(FAKE, files, `${MARK} shape`, {}, { who: MARK });
+    return r.ok ? "" : r.why;
+  };
+  check("nothing at all", (await bad([])).includes("no files"));
+  check(
+    "a path climbing out of the repository",
+    (await bad([{ path: "../../etc/passwd", content: "x" }])).length > 0,
+  );
+  check(
+    "a path into .git",
+    (await bad([{ path: ".git/config", content: "x" }])).length > 0,
+  );
+  check(
+    "an empty path",
+    (await bad([{ path: "   ", content: "x" }])).length > 0,
+  );
+  check(
+    "more files than it will take at once",
+    (await bad(
+      Array.from({ length: 400 }, (_, i) => ({ path: `f${i}.txt`, content: "x" })),
+    )).includes("most I will commit"),
+  );
+
+  // ── the sticker gallery ────────────────────────────────────────────────
+  console.log("\nthe sticker gallery, built from the real library:");
+  const site = await stickerSite.build({ title: "check gallery" });
+  const index = site.files.find((f) => f.path === "index.html");
+  check("it writes an index.html", index !== undefined);
+  check(
+    "one picture per sticker, plus the page",
+    site.files.length === site.count + 1,
+    `— ${site.files.length} files for ${site.count} stickers`,
+  );
+  /*
+   * The library is 49MB. A commit of everything is minutes of sequential blob uploads and a
+   * repository nobody wants; the budget is what turns that into a page that exists.
+   */
+  const bytes = site.files.reduce(
+    (sum, f) => sum + (typeof f.content === "string" ? Buffer.byteLength(f.content) : f.content.length),
+    0,
+  );
+  check(
+    "the whole commit stays inside the budget",
+    bytes <= 20 * 1024 * 1024,
+    `— ${(bytes / 1024 / 1024).toFixed(1)}MB for ${site.count} stickers, ${site.left} left out`,
+  );
+  check("and it says how many were left out", typeof site.left === "number");
+  check(
+    "a smaller budget takes fewer",
+    (await stickerSite.build({ budgetBytes: 2 * 1024 * 1024 })).count < site.count,
+  );
+  check(
+    "the pictures are bytes, not links",
+    site.files.every((f) => f.path === "index.html" || Buffer.isBuffer(f.content)),
+  );
+  check(
+    "every picture is referenced by the page",
+    site.files
+      .filter((f) => f.path !== "index.html")
+      .every((f) => String(index?.content).includes(f.path)),
+  );
+  /*
+   * Links out are fine; *loads* are not. A stylesheet, font or image fetched from elsewhere is a
+   * gallery that looks broken the day that host does, and a Pages site should not need the
+   * network to render itself. The footer's link to the repository is not that.
+   */
+  const html = String(index?.content);
+  check("the page loads nothing from elsewhere", !/src=["\']https?:/i.test(html));
+  check("no stylesheet or font from elsewhere", !/<link[^>]+href=["\']https?:/i.test(html));
+  check("and nothing pulled in by CSS", !/url\(\s*["\']?https?:/i.test(html));
+  check("and it is a whole document", String(index?.content).startsWith("<!doctype html>"));
 
   // ── the real API ───────────────────────────────────────────────────────
   console.log("\nagainst api.github.com:");

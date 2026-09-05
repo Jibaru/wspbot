@@ -49,7 +49,12 @@ export default async function GithubPage() {
   const s = settings;
   const connected = Boolean(s?.login);
   const writesOn = Boolean(
-    s && (s.canOpenIssues || s.canComment || s.canCreateRepos || s.canDeployPages),
+    s &&
+      (s.canOpenIssues ||
+        s.canComment ||
+        s.canCreateRepos ||
+        s.canDeployPages ||
+        s.canPushFiles),
   );
 
   return (
@@ -173,6 +178,20 @@ export default async function GithubPage() {
                   defaultChecked={s?.canCreateRepos ?? false}
                 />
                 <span>Create repositories</span>
+              </label>
+              <label className="pick">
+                <input
+                  type="checkbox"
+                  name="canPushFiles"
+                  defaultChecked={s?.canPushFiles ?? false}
+                />
+                <span>
+                  Commit files
+                  <span className="meta">
+                    Whole files, replacing whatever is at that path. This is what lets it publish
+                    a page it wrote, or the sticker gallery.
+                  </span>
+                </span>
               </label>
               <label className="pick">
                 <input

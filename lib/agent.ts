@@ -26,6 +26,7 @@ import * as features from "./features";
 import * as summaries from "./summaries";
 import * as chime from "./chime";
 import * as github from "./github";
+import * as stickerSite from "./sticker-site";
 import * as supporters from "./supporters";
 import * as roadmap from "./roadmap";
 import { render as renderHtml, capture } from "./render-html";
@@ -227,6 +228,7 @@ const systemPrompt = async (turn: Turn, on: Set<string>): Promise<string> => {
                     ? `create repositories${gh.reposPrivate ? " (always private)" : ""}`
                     : "",
                   gh.canDeployPages ? "publish a repository as a website with GitHub Pages" : "",
+                  gh.canPushFiles ? "commit files into a repository" : "",
                 ]
                   .filter(Boolean)
                   .join(", ")}.${
@@ -237,6 +239,16 @@ const systemPrompt = async (turn: Turn, on: Set<string>): Promise<string> => {
                 ...(gh.canDeployPages
                   ? [
                       "- A published site is only as public as its repository, and a private repository cannot have one at all without a paid plan — if publishing is refused for that reason, say so rather than retrying.",
+                    ]
+                  : []),
+                ...(gh.canPushFiles && gh.canDeployPages
+                  ? [
+                      "- To put something on the web: create a repository if there is not one already, `github_put_files` the page into it as `index.html`, then `github_pages` to publish it and hand back the address. `github_publish_stickers` does that whole sequence for the sticker library on its own.",
+                    ]
+                  : []),
+                ...(gh.canPushFiles
+                  ? [
+                      "- `github_put_files` writes whole files, never patches. What you send replaces what is at that path, so do not use it to change part of a file you have not read.",
                     ]
                   : []),
                 "- Writing to GitHub is public and permanent, and every issue carries the name of whoever asked. Open one when somebody actually wants it filed — a bug, a request, something to remember — and not to acknowledge a passing remark. Say what you filed and link it.",
@@ -1371,6 +1383,106 @@ const toolsFor = (turn: Turn, sent: string[]) => ({
             ? ""
             : " It is building — the address usually starts working within a minute or two, and shows a 404 until it does.";
         return `${created ? "Published" : "Already published"}: ${url}${settling} Give them that address.`;
+      } catch (err) {
+        return err instanceof Error ? err.message : String(err);
+      }
+    },
+  }),
+
+  github_put_files: tool({
+    description:
+      "Write text files into a repository as a single commit — an index.html for a site, a README, a data file, anything you can write out. Existing files at those paths are replaced; everything else in the repository is left alone. Combine it with github_pages to publish a page you have written.",
+    inputSchema: z.object({
+      repo: z.string().describe('Like "kekito-crafter/my-site".'),
+      files: z
+        .array(
+          z.object({
+            path: z
+              .string()
+              .describe('Repository-relative, no leading slash. "index.html", "docs/notes.md".'),
+            content: z
+              .string()
+              .describe("The whole file, not a patch — what is here replaces what is there."),
+          }),
+        )
+        .min(1)
+        .describe("Everything that belongs in one commit. Files that make sense together go together."),
+      message: z.string().describe("The commit message. Say what changed and why."),
+      branch: z.string().optional().describe("Defaults to the repository's default branch."),
+    }),
+    execute: async ({ repo, files, message, branch }) => {
+      try {
+        const result = await github.putFiles(
+          repo,
+          files,
+          message,
+          { ...(branch ? { branch } : {}) },
+          { chat: turn.chat, who: turn.senderName },
+        );
+        return result.ok
+          ? `Committed ${result.files} file${result.files === 1 ? "" : "s"} to ${repo} on ${result.branch} (${result.commit}): ${result.url}`
+          : `Not committed — ${result.why}.`;
+      } catch (err) {
+        return err instanceof Error ? err.message : String(err);
+      }
+    },
+  }),
+
+  github_publish_stickers: tool({
+    description:
+      "Put the whole sticker library on the web: builds a gallery page, commits every sticker into a repository, switches GitHub Pages on and gives back the address. Use it when somebody asks to see the stickers as a website or to share them outside WhatsApp. Repeat it later to refresh the page with whatever has been collected since.",
+    inputSchema: z.object({
+      repo: z
+        .string()
+        .describe(
+          "Where to publish it, as owner/name. It must already exist — create it first if it does not — and be one you are allowed to write to.",
+        ),
+      title: z
+        .string()
+        .optional()
+        .describe("The heading on the page. Defaults to 'Sticker library'."),
+    }),
+    execute: async ({ repo, title }) => {
+      try {
+        const built = await stickerSite.build({ ...(title ? { title } : {}) });
+        if (built.count === 0) {
+          return "There are no stickers with stored pictures to publish yet.";
+        }
+
+        const committed = await github.putFiles(
+          repo,
+          built.files,
+          `Publish ${built.count} sticker${built.count === 1 ? "" : "s"}`,
+          {},
+          { chat: turn.chat, who: turn.senderName },
+        );
+        if (!committed.ok) return `Not published — ${committed.why}.`;
+
+        const published = await github.deployPages(
+          repo,
+          {},
+          { chat: turn.chat, who: turn.senderName },
+        );
+        if (!published.ok) {
+          return `The stickers are committed to ${repo}, but publishing the site was refused — ${published.why}. The files are there either way.`;
+        }
+
+        const missing = [
+          built.left
+            ? `The newest ${built.count} are on it; ${built.left} more would have made the commit too big.`
+            : "",
+          built.skipped ? `${built.skipped} had no stored picture.` : "",
+        ]
+          .filter(Boolean)
+          .join(" ");
+        const settling =
+          published.site.status === "built"
+            ? ""
+            : " It is building — give it a minute or two before opening it.";
+        return `Published ${built.count} stickers: ${published.site.url}${settling} ${missing} Give them that address.`.replace(
+          /\s+/g,
+          " ",
+        );
       } catch (err) {
         return err instanceof Error ? err.message : String(err);
       }

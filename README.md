@@ -35,7 +35,7 @@ bot   → Done.
 |  |  |
 | --- | --- |
 | **What it is** | One Next.js container: a webhook that answers WhatsApp, and a dashboard that decides what it may do |
-| **Abilities** | 24 switchable features over 45 model tools, plus 3 that are always on |
+| **Abilities** | 24 switchable features over 47 model tools, plus 3 that are always on |
 | **Storage** | Postgres, 24 tables — memory, history, stickers, schedules, supporters, roadmap, spend |
 | **Runs on** | A Dokploy VPS behind Traefik, alongside the WhatsApp gateway it talks to |
 | **Guarded by** | 18 check scripts that exercise the real thing rather than asserting about it |
@@ -81,7 +81,7 @@ flowchart LR
         GATE["mentions<br/>is this message for me?"]
         LIMIT["rate limit<br/>before anything costs money"]
         REC["recorder<br/>untagged, recorded groups only"]
-        AGENT["agent<br/>system prompt + 45 tools"]
+        AGENT["agent<br/>system prompt + 47 tools"]
         TIMERS["timers<br/>session 2m · reminders 30s · digests 1m · chime-ins 1m"]
         FEAT["features<br/>24 switches own every tool<br/>read from Postgres every turn"]
         FF["ffmpeg · Chromium<br/>stickers · voice · video · rendering"]
@@ -350,6 +350,7 @@ Beyond text, the bot decides for itself when one of these fits — you just ask 
 | "make a sticker of a sleepy capybara" | draws one, transparent background, and keeps it |
 | "make a sticker from <gif link>" | downloads it and converts it, animation intact |
 | "publish that repo and send me the link" | switches GitHub Pages on and gives back the address |
+| "put the stickers on a web page" | commits every sticker, publishes it, sends the link |
 | "show me that as a table" | lays it out in HTML, renders it, sends it as a picture |
 | "render crafterstation.com and send a photo" | opens the page in a real browser, sends a screenshot |
 
@@ -659,6 +660,28 @@ process spawn per call.
    than every switch below, which is why the page asks for one of those.
 2. **What the bot may do with it**, decided on the dashboard — always the tighter of the two,
    because the token is issued once and the bot is exposed to a group chat all day.
+
+**Committing files.** `github_put_files` writes whole files into a repository as **one commit**.
+One commit, not one per file, and that is the reason it uses the git data API rather than the
+contents endpoint: a site is a set of files that only make sense together, and a request per file
+means a half-published site when the fourth one fails, plus a Pages build kicked off for each.
+The tree is built on top of the existing one, so anything not named is left exactly as it was.
+
+**The sticker library as a website.** `github_publish_stickers` does the whole sequence on its
+own: builds a gallery page, commits every sticker into a repository, switches Pages on, and hands
+back the address.
+
+The stickers are committed as **files, not links**. A wapi URL dies with the session that
+uploaded it, so a page built from those links is a page of broken images the day the bot's number
+changes — the bytes are already in Postgres for exactly this reason, and the site carries its own
+copies.
+
+There is a **budget**, and it is not arbitrary: the real library is 313 stickers and 49MB.
+Publishing all of it is a 49MB commit built from 313 sequential blob uploads — minutes of API
+calls for one chat message. So the newest are taken up to 150 stickers or 20MB, whichever comes
+first, and the bot says how many were left out. Choosing what fits is done from a list of byte
+counts rather than from the pictures themselves, because dragging 49MB out of Postgres to use
+20MB of it is slow enough to be cancelled mid-flight.
 
 **Publishing a repository as a website.** `github_pages` switches GitHub Pages on for a
 repository and answers with its public address. It is idempotent, because "deploy it" and "what
@@ -1290,6 +1313,7 @@ lib/ffmpeg.ts                    shared ffmpeg runner and scratch directories
 lib/fetch-media.ts               guarded remote downloads (SSRF, redirects, size cap)
 
 lib/github.ts                    GitHub: the account, the permission layer, the REST client
+lib/sticker-site.ts              the sticker library as a static site, ready to commit
 lib/secret-box.ts                sealing the one credential that should not be legible in a dump
 lib/notion.ts                    Notion OAuth and the page operations
 lib/oauth-state.ts               the signed state that binds a connection to a chat

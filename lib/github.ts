@@ -52,6 +52,7 @@ export type Settings = {
   canComment: boolean;
   canCreateRepos: boolean;
   canDeployPages: boolean;
+  canPushFiles: boolean;
   /** A repository created by a chat message should not be public by accident. */
   reposPrivate: boolean;
   maxWritesPerDay: number;
@@ -67,13 +68,14 @@ type Row = {
   can_comment: boolean;
   can_create_repos: boolean;
   can_deploy_pages: boolean;
+  can_push_files: boolean;
   repos_private: boolean;
   max_writes_per_day: number;
   connected_at: Date | null;
 };
 
 const COLUMNS =
-  "login, scopes, hint, owner, can_open_issues, can_comment, can_create_repos, can_deploy_pages, repos_private, max_writes_per_day, connected_at";
+  "login, scopes, hint, owner, can_open_issues, can_comment, can_create_repos, can_deploy_pages, can_push_files, repos_private, max_writes_per_day, connected_at";
 
 const DEFAULTS: Settings = {
   login: null,
@@ -84,6 +86,7 @@ const DEFAULTS: Settings = {
   canComment: false,
   canCreateRepos: false,
   canDeployPages: false,
+  canPushFiles: false,
   reposPrivate: true,
   maxWritesPerDay: 10,
   connectedAt: null,
@@ -106,6 +109,7 @@ export const settings = async (): Promise<Settings> => {
     canComment: row.can_comment,
     canCreateRepos: row.can_create_repos,
     canDeployPages: row.can_deploy_pages,
+    canPushFiles: row.can_push_files,
     reposPrivate: row.repos_private,
     maxWritesPerDay: Number(row.max_writes_per_day),
     connectedAt: row.connected_at,
@@ -165,6 +169,7 @@ export type Permissions = {
   canComment?: boolean;
   canCreateRepos?: boolean;
   canDeployPages?: boolean;
+  canPushFiles?: boolean;
   reposPrivate?: boolean;
   maxWritesPerDay?: number;
 };
@@ -175,14 +180,15 @@ export const setPermissions = async (input: Permissions): Promise<void> => {
     : 10;
 
   await query(
-    `insert into github_settings (id, owner, can_open_issues, can_comment, can_create_repos, can_deploy_pages, repos_private, max_writes_per_day)
-     values (1, $1, $2, $3, $4, $5, $6, $7)
+    `insert into github_settings (id, owner, can_open_issues, can_comment, can_create_repos, can_deploy_pages, can_push_files, repos_private, max_writes_per_day)
+     values (1, $1, $2, $3, $4, $5, $6, $7, $8)
      on conflict (id) do update set
        owner              = excluded.owner,
        can_open_issues    = excluded.can_open_issues,
        can_comment        = excluded.can_comment,
        can_create_repos   = excluded.can_create_repos,
        can_deploy_pages   = excluded.can_deploy_pages,
+       can_push_files     = excluded.can_push_files,
        repos_private      = excluded.repos_private,
        max_writes_per_day = excluded.max_writes_per_day`,
     [
@@ -191,6 +197,7 @@ export const setPermissions = async (input: Permissions): Promise<void> => {
       input.canComment ?? false,
       input.canCreateRepos ?? false,
       input.canDeployPages ?? false,
+      input.canPushFiles ?? false,
       input.reposPrivate ?? true,
       cap,
     ],
@@ -602,7 +609,7 @@ export type By = { chat?: string | null; who?: string | null; where?: string | n
  * error that reaches the model as a stack trace is not.
  */
 const refuse = async (
-  what: "open_issue" | "comment" | "create_repo" | "deploy_pages",
+  what: "open_issue" | "comment" | "create_repo" | "deploy_pages" | "push_files",
   repoName: string | null,
 ): Promise<string | null> => {
   const s = await settings();
@@ -612,6 +619,7 @@ const refuse = async (
   if (what === "comment" && !s.canComment) return "commenting is switched off";
   if (what === "create_repo" && !s.canCreateRepos) return "creating repositories is switched off";
   if (what === "deploy_pages" && !s.canDeployPages) return "publishing sites is switched off";
+  if (what === "push_files" && !s.canPushFiles) return "committing files is switched off";
 
   if (repoName && !(await isAllowed(repoName))) {
     return `${normalise(repoName)} is not on the list of repositories I may write to`;
@@ -861,6 +869,132 @@ export const statuses = async (): Promise<RepoStatus[]> => {
       }
     }),
   );
+};
+
+// ── committing files ─────────────────────────────────────────────────────
+
+/**
+ * Writing files into a repository, as one commit.
+ *
+ * The obvious route is the contents API, one `PUT` per file. It is also wrong for what this is
+ * for: publishing a site is a set of files that only make sense together, and one request per
+ * file means one commit per file, a half-published site if the fourth one fails, and a Pages
+ * build kicked off for each. So this uses the Git data API, which is four requests plus one
+ * blob per file and produces a single commit:
+ *
+ *   read the branch head → make a blob per file → build a tree on top of the old one →
+ *   commit it → move the branch
+ *
+ * Building the tree on `base_tree` is what makes this add to a repository rather than replace
+ * it: anything not named here is left exactly as it was.
+ */
+export type FileToWrite = {
+  /** Repository-relative, no leading slash. */
+  path: string;
+  /** Text, or bytes for anything that is not. */
+  content: string | Buffer;
+};
+
+/** Enough for a sticker gallery; far short of anything that would time a turn out. */
+const MAX_FILES = 300;
+const MAX_TOTAL_BYTES = 40 * 1024 * 1024;
+
+export type Committed =
+  | { ok: true; commit: string; url: string; files: number; branch: string }
+  | { ok: false; why: string };
+
+export const putFiles = async (
+  name: string,
+  files: FileToWrite[],
+  message: string,
+  options: { branch?: string } = {},
+  by: By = {},
+): Promise<Committed> => {
+  const why = await refuse("push_files", name);
+  if (why) return { ok: false, why };
+
+  const path = normalise(name);
+  if (files.length === 0) return { ok: false, why: "there were no files to commit" };
+  if (files.length > MAX_FILES) {
+    return { ok: false, why: `that is ${files.length} files; ${MAX_FILES} is the most I will commit at once` };
+  }
+
+  const total = files.reduce(
+    (sum, f) => sum + (typeof f.content === "string" ? Buffer.byteLength(f.content) : f.content.length),
+    0,
+  );
+  if (total > MAX_TOTAL_BYTES) {
+    return { ok: false, why: `that is ${Math.round(total / 1024 / 1024)}MB, which is more than I will commit at once` };
+  }
+
+  const clean = files.map((f) => ({
+    ...f,
+    path: f.path.replace(/^\/+/, "").trim(),
+  }));
+  if (clean.some((f) => !f.path || f.path.includes("..") || f.path.startsWith(".git/"))) {
+    return { ok: false, why: "one of those paths is not a usable file path" };
+  }
+
+  const branch = options.branch ?? (await repo(path)).defaultBranch;
+
+  // The branch head, and the tree it points at.
+  const ref = await request("GET", `/repos/${path}/git/ref/heads/${branch}`);
+  const headSha = (ref.body as { object: { sha: string } }).object.sha;
+  const head = await request("GET", `/repos/${path}/git/commits/${headSha}`);
+  const baseTree = (head.body as { tree: { sha: string } }).tree.sha;
+
+  /*
+   * Blobs first, sequentially. In parallel this is faster and also the way to be rate-limited
+   * mid-upload with half a site in the object store and no commit pointing at it.
+   */
+  const blobs: { path: string; sha: string }[] = [];
+  for (const file of clean) {
+    const isText = typeof file.content === "string";
+    const created = await request("POST", `/repos/${path}/git/blobs`, {
+      body: isText
+        ? { content: file.content as string, encoding: "utf-8" }
+        : { content: (file.content as Buffer).toString("base64"), encoding: "base64" },
+    });
+    blobs.push({ path: file.path, sha: (created.body as { sha: string }).sha });
+  }
+
+  const tree = await request("POST", `/repos/${path}/git/trees`, {
+    body: {
+      base_tree: baseTree,
+      tree: blobs.map((b) => ({ path: b.path, mode: "100644", type: "blob", sha: b.sha })),
+    },
+  });
+
+  const commit = await request("POST", `/repos/${path}/git/commits`, {
+    body: {
+      message: `${message}${by.who ? `
+
+Asked for by ${by.who} through wspbot.` : ""}`,
+      tree: (tree.body as { sha: string }).sha,
+      parents: [headSha],
+    },
+  });
+  const commitSha = (commit.body as { sha: string }).sha;
+
+  await request("PATCH", `/repos/${path}/git/refs/heads/${branch}`, {
+    body: { sha: commitSha },
+  });
+
+  await record({
+    chat: by.chat ?? null,
+    who: by.who ?? null,
+    action: "push_files",
+    target: path,
+    detail: `${clean.length} file${clean.length === 1 ? "" : "s"}: ${clean.map((f) => f.path).join(", ")}`,
+  });
+
+  return {
+    ok: true,
+    commit: commitSha.slice(0, 7),
+    url: `https://github.com/${path}/commit/${commitSha}`,
+    files: clean.length,
+    branch,
+  };
 };
 
 // ── GitHub Pages ─────────────────────────────────────────────────────────

@@ -351,6 +351,8 @@ const migrate = async (): Promise<void> => {
     alter table github_settings add column if not exists chat_mode text not null default 'everywhere';
     -- Publishing a site is a write like the others, and off until somebody says otherwise.
     alter table github_settings add column if not exists can_deploy_pages boolean not null default false;
+    -- Committing files is its own permission: it is the one that can change what a site says.
+    alter table github_settings add column if not exists can_push_files boolean not null default false;
 
     create table if not exists github_chats (
       chat      text primary key,

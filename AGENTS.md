@@ -88,6 +88,7 @@ lib/audio.ts                     TTS output -> Ogg/Opus
 lib/video.ts                     anything -> H.264/AAC MP4
 lib/ffmpeg.ts                    shared ffmpeg runner + scratch dirs
 lib/render-html.ts               Chromium: the bot's own HTML -> a picture, no network at all
+lib/sticker-site.ts              the sticker library as a static site, ready to commit
 lib/fetch-media.ts               guarded remote downloads (SSRF)
 ```
 
@@ -355,6 +356,18 @@ like a simplification opportunity.
   dashboard form, and `github-check`'s restore. That restore reads the real row and puts it back,
   so a column missing there is silently reset to its default — `chat_mode` was, which turned
   "only these groups" back into "everywhere" on every run of the check.
+- **Files go in as one commit, through the git data API.** The contents endpoint is one `PUT`
+  per file, which is one commit per file, a half-published site when the fourth fails, and a Pages
+  build for each. `putFiles` reads the branch head, makes a blob per file, builds a tree on
+  `base_tree` — so unnamed files survive — commits once and moves the ref. Blobs go up
+  sequentially: GitHub's own guidance is to avoid concurrent mutating requests.
+- **The sticker site commits bytes, never wapi links.** A wapi URL dies with the session that
+  uploaded it, so a gallery of those links is a gallery of broken images the day the number
+  changes. The bytes in Postgres exist for this.
+- **Choose what fits from sizes, not from pictures.** `stickers.sizes()` then `bytesFor()`. The
+  first version selected every `bytes` column to decide which 20MB of 49MB to publish, and that
+  query is heavy enough to be cancelled outright — which surfaces as a Postgres error in the
+  middle of an export, not as slowness.
 - **`github_pages` has to be idempotent, and 409 is an answer.** "Deploy it" and "what is the
   URL?" are the same question asked twice. It reads first, enables only when there is nothing
   there, and requests a build otherwise — and that build request is allowed to fail, since a

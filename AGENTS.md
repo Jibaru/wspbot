@@ -343,6 +343,16 @@ like a simplification opportunity.
   may. Treating `permissions.push === false` as "cannot write" would refuse the one arrangement
   that works for somebody else's public repository, so `verdict()` splits on visibility and scope
   rather than on push.
+- **GitHub is the one feature that is also scoped per chat**, and it is done by deleting the key
+  from the switch set in `reply()` rather than by gating each tool. The prompt section, the tool
+  withdrawal and the self-description all read that set, so a chat it is off in never hears the
+  feature exists — the difference between "off" and "offers it, then refuses". `features` itself
+  is still global; a general per-chat table is still a rewrite, not a tweak.
+- **"Only these groups" with no groups means nowhere.** The inverse would be an integration that
+  became available everywhere the moment somebody cleared the list. `github-check` states it.
+- **A new `github_settings` column has to be added to `github-check`'s restore too.** It reads the
+  real row and puts it back; a column missing there is silently reset to its default — `chat_mode`
+  was, which turned "only these groups" back into "everywhere" on every run of the check.
 - **Writes fail closed.** An empty `github_repos` means no repository may be written to, not
   "any". A default of "anywhere" would be one migration away from a bot that opens issues on
   strangers' repositories because somebody in a group asked it to.

@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import * as github from "@/lib/github";
+import { wapi } from "@/lib/wapi";
 
 /**
  * The token arrives in a form post and is never sent back out again. `connect` verifies it with
@@ -38,6 +39,30 @@ export async function savePermissions(formData: FormData): Promise<void> {
     reposPrivate: !on("allowPublic"),
     maxWritesPerDay: Number(formData.get("maxWritesPerDay") ?? 10),
   });
+  revalidatePath("/dashboard/github");
+}
+
+/**
+ * The whole set of chats, posted at once. `forgetScope` matters here for the same reason the
+ * recorder's cache does: a group ticked on this page should work on the next message, not in
+ * thirty seconds.
+ */
+export async function saveScope(formData: FormData): Promise<void> {
+  const mode = String(formData.get("mode") ?? "everywhere") === "listed" ? "listed" : "everywhere";
+  const picked = formData.getAll("chats").map(String).filter(Boolean);
+
+  // The name comes from the checkbox value, which carries both, so a group the bot later leaves
+  // still reads as a name rather than a JID.
+  const groups = await wapi.groups().catch(() => []);
+  await github.setChats(
+    picked.map((chat) => ({
+      chat,
+      chatName: groups.find((g) => g.jid === chat)?.name ?? null,
+    })),
+    mode,
+  );
+
+  github.forgetScope();
   revalidatePath("/dashboard/github");
 }
 

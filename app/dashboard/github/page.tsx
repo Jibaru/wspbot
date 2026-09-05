@@ -1,10 +1,12 @@
 import * as github from "@/lib/github";
 import * as features from "@/lib/features";
+import { wapi } from "@/lib/wapi";
 import { settle, when, shortJid } from "../shared";
 import {
   connectGithub,
   disconnectGithub,
   savePermissions,
+  saveScope,
   allowRepo,
   disallowRepo,
 } from "./actions";
@@ -35,6 +37,12 @@ export default async function GithubPage() {
      */
     settle(github.statuses()),
   ]);
+  const [scope, chats, groups] = await Promise.all([
+    settle(github.scope()),
+    settle(github.chats()),
+    settle(wapi.groups()),
+  ]);
+  const picked = new Set((chats ?? []).map((c) => c.chat));
   const statusOf = new Map((statuses ?? []).map((s) => [s.repo, s]));
 
   const on = enabled?.has("github") ?? true;
@@ -193,6 +201,73 @@ export default async function GithubPage() {
             <button type="submit">Save</button>
           </form>
         )}
+      </div>
+
+      <h2>Where it can be used</h2>
+      <div className="panel">
+        <p className="meta" style={{ marginTop: 0 }}>
+          This is a different question from the list below: that one is <em>where writes land</em>,
+          this one is <em>who may ask</em>. A chat GitHub is switched off in is not told it exists
+          at all, so the bot does not offer something it will then refuse.
+        </p>
+        <form action={saveScope} className="schedule-form">
+          <div className="checks">
+            <label className="pick">
+              <input
+                type="radio"
+                name="mode"
+                value="everywhere"
+                defaultChecked={(scope ?? "everywhere") === "everywhere"}
+              />
+              <span>Every chat the bot is in</span>
+            </label>
+            <label className="pick">
+              <input
+                type="radio"
+                name="mode"
+                value="listed"
+                defaultChecked={scope === "listed"}
+              />
+              <span>Only the groups ticked below</span>
+            </label>
+          </div>
+
+          <label>Groups</label>
+          {groups === null ? (
+            <p className="empty">Could not list groups — check the session on the overview page.</p>
+          ) : groups.length === 0 ? (
+            <p className="empty">The bot is not in any groups yet.</p>
+          ) : (
+            <div className="checks">
+              {groups.map((g) => (
+                <label className="pick" key={g.jid}>
+                  <input
+                    type="checkbox"
+                    name="chats"
+                    value={g.jid}
+                    defaultChecked={picked.has(g.jid)}
+                  />
+                  <span>{g.name}</span>
+                </label>
+              ))}
+              {/* A chat that is on the list but no longer a group the bot can see still has to be
+                  shown, or saving the form would quietly drop it. */}
+              {(chats ?? [])
+                .filter((c) => !groups.some((g) => g.jid === c.chat))
+                .map((c) => (
+                  <label className="pick" key={c.chat}>
+                    <input type="checkbox" name="chats" value={c.chat} defaultChecked />
+                    <span>
+                      {c.chatName ?? shortJid(c.chat)}{" "}
+                      <span className="meta">· not a group the bot is in any more</span>
+                    </span>
+                  </label>
+                ))}
+            </div>
+          )}
+
+          <button type="submit">Save</button>
+        </form>
       </div>
 
       <h2>Repositories it may write to{repos?.length ? ` · ${repos.length}` : ""}</h2>

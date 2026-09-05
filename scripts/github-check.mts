@@ -53,11 +53,17 @@ type Saved = {
   repos_private: boolean;
   max_writes_per_day: number;
   connected_at: Date | null;
+  /*
+   * Every column has to be here. This one was missed once and the restore put the row back
+   * without it, which reset "only these groups" to "everywhere" — a check that silently widens
+   * the thing it is checking. Add a column to github_settings, add it here.
+   */
+  chat_mode: string;
 };
 
 const saved = (
   await query<Saved>(
-    "select token, login, scopes, hint, owner, can_open_issues, can_comment, can_create_repos, repos_private, max_writes_per_day, connected_at from github_settings where id = 1",
+    "select token, login, scopes, hint, owner, can_open_issues, can_comment, can_create_repos, repos_private, max_writes_per_day, connected_at, chat_mode from github_settings where id = 1",
   )
 )[0];
 
@@ -65,8 +71,8 @@ const restore = async () => {
   await query("delete from github_settings where id = 1");
   if (saved) {
     await query(
-      `insert into github_settings (id, token, login, scopes, hint, owner, can_open_issues, can_comment, can_create_repos, repos_private, max_writes_per_day, connected_at)
-       values (1, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+      `insert into github_settings (id, token, login, scopes, hint, owner, can_open_issues, can_comment, can_create_repos, repos_private, max_writes_per_day, connected_at, chat_mode)
+       values (1, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
       [
         saved.token,
         saved.login,
@@ -79,11 +85,14 @@ const restore = async () => {
         saved.repos_private,
         saved.max_writes_per_day,
         saved.connected_at,
+        saved.chat_mode,
       ],
     );
   }
   await query("delete from github_repos where repo = $1", [FAKE]);
   await query("delete from github_actions where who = $1", [MARK]);
+  await query("delete from github_chats where chat like '1200000000000000%'");
+  github.forgetScope();
 };
 
 try {
@@ -231,6 +240,32 @@ try {
     readThrew = err instanceof Error ? err.message : String(err);
   }
   check("a read says so too", readThrew.includes("not connected"), `— ${readThrew}`);
+
+  // ── which chats may ask ────────────────────────────────────────────────
+  console.log("\nwhich chats may ask:");
+  const HERE = "120000000000000001@g.us";
+  const THERE = "120000000000000002@g.us";
+
+  await github.setChats([], "everywhere");
+  github.forgetScope();
+  check("everywhere means everywhere", await github.availableIn(THERE));
+
+  await github.setChats([{ chat: HERE, chatName: `${MARK} group` }], "listed");
+  github.forgetScope();
+  check("a listed group may ask", await github.availableIn(HERE));
+  check("one that is not may not", !(await github.availableIn(THERE)));
+
+  /*
+   * The empty-list case is the one worth stating. "Only these groups" with none listed means
+   * nowhere — the honest reading — and getting it backwards would be an integration that quietly
+   * became available everywhere the moment somebody cleared the list.
+   */
+  await github.setChats([], "listed");
+  github.forgetScope();
+  check("listed with nothing listed is nowhere", !(await github.availableIn(HERE)));
+
+  await github.setChats([], "everywhere");
+  github.forgetScope();
 
   // ── can it actually write there? ───────────────────────────────────────
   console.log("\ncan it actually write there:");

@@ -1631,6 +1631,14 @@ export const reply = async (turn: Turn): Promise<Reply> => {
    * the turn would then describe a tool it was not given.
    */
   const on = await features.enabled();
+  /*
+   * GitHub is the one feature that is also scoped per chat. Removing the key here rather than
+   * gating each tool means the prompt section, the tool withdrawal and what the bot says about
+   * itself all follow from the same set — a chat it is switched off in does not hear about it,
+   * which is the difference between "off" and "refuses when asked".
+   */
+  if (on.has("github") && !(await github.availableIn(turn.chat))) on.delete("github");
+
   const content = await buildUserContent(turn, on);
   const history = await loadHistory(turn.chat);
   const sent: string[] = [];

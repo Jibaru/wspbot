@@ -190,6 +190,83 @@ export const setPermissions = async (input: Permissions): Promise<void> => {
   );
 };
 
+// ── where it is reachable from ───────────────────────────────────────────
+
+/**
+ * Which chats may use GitHub at all.
+ *
+ * Separate from the allowlist, and easy to confuse with it. The allowlist answers *where writes
+ * land*; this answers *who may ask*. A group can be trusted to open issues on the bot's own
+ * repository without every group in the world being able to, and the two lists move for different
+ * reasons — one when a repository is adopted, the other when a room is.
+ *
+ * `everywhere` is the default because it is what the feature did before this existed, and a
+ * change that quietly switches an integration off in the group already using it is a bug wearing
+ * a feature's clothes. `listed` means exactly the rows in `github_chats` — an empty list then
+ * means nowhere, which is the honest reading of "only these groups" when there are none.
+ */
+export type Scope = "everywhere" | "listed";
+
+export const scope = async (): Promise<Scope> => {
+  const rows = await query<{ chat_mode: string }>(
+    "select chat_mode from github_settings where id = 1",
+  );
+  return rows[0]?.chat_mode === "listed" ? "listed" : "everywhere";
+};
+
+export type ChatEntry = { chat: string; chatName: string | null };
+
+export const chats = async (): Promise<ChatEntry[]> => {
+  const rows = await query<{ chat: string; chat_name: string | null }>(
+    "select chat, chat_name from github_chats order by coalesce(chat_name, chat)",
+  );
+  return rows.map((r) => ({ chat: r.chat, chatName: r.chat_name }));
+};
+
+/**
+ * Replace the set in one go, which is what a page of checkboxes posts. Done as a delete and an
+ * insert rather than a diff: the form is the whole truth, and reconciling it row by row would
+ * only add a way for the two to disagree.
+ */
+export const setChats = async (
+  entries: ChatEntry[],
+  mode: Scope,
+): Promise<void> => {
+  await query(
+    `insert into github_settings (id, chat_mode) values (1, $1)
+     on conflict (id) do update set chat_mode = excluded.chat_mode`,
+    [mode],
+  );
+  await query("delete from github_chats");
+  for (const entry of entries) {
+    await query(
+      "insert into github_chats (chat, chat_name) values ($1, $2) on conflict (chat) do update set chat_name = excluded.chat_name",
+      [entry.chat, entry.chatName],
+    );
+  }
+};
+
+/**
+ * Consulted once per turn, in every chat, so it is cached for the same half-minute as the other
+ * per-message lookups. Cleared by the dashboard, so a group switched on works on the next message
+ * rather than in thirty seconds.
+ */
+const SCOPE_TTL_MS = 30 * 1000;
+let cachedScope: { mode: Scope; chats: Set<string>; at: number } | undefined;
+
+export const availableIn = async (chat: string): Promise<boolean> => {
+  const now = Date.now();
+  if (!cachedScope || now - cachedScope.at >= SCOPE_TTL_MS) {
+    const [mode, list] = await Promise.all([scope(), chats()]);
+    cachedScope = { mode, chats: new Set(list.map((c) => c.chat)), at: now };
+  }
+  return cachedScope.mode === "everywhere" || cachedScope.chats.has(chat);
+};
+
+export const forgetScope = (): void => {
+  cachedScope = undefined;
+};
+
 // ── the allowlist ────────────────────────────────────────────────────────
 
 /**

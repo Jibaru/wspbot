@@ -339,6 +339,22 @@ const migrate = async (): Promise<void> => {
       detail text
     );
     create index if not exists github_actions_at_idx on github_actions (at desc);
+
+    /*
+     * Which chats GitHub is reachable from. 'everywhere' is the default so that turning the
+     * feature on does not silently do nothing; 'listed' means these rows and nothing else.
+     *
+     * Added by ALTER rather than in the create above, because the table already exists in a
+     * deployment that predates this column, and "create table if not exists" would leave it
+     * without one — a NOT NULL read against a missing column throws on every dashboard page.
+     */
+    alter table github_settings add column if not exists chat_mode text not null default 'everywhere';
+
+    create table if not exists github_chats (
+      chat      text primary key,
+      chat_name text,
+      added_at  timestamptz not null default now()
+    );
     -- Deliveries retry, and the same message must not appear twice in a digest.
     create unique index if not exists logged_messages_unique
       on logged_messages (chat, message_id);

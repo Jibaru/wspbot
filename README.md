@@ -36,7 +36,7 @@ bot   → Done.
 | --- | --- |
 | **What it is** | One Next.js container: a webhook that answers WhatsApp, and a dashboard that decides what it may do |
 | **Abilities** | 24 switchable features over 44 model tools, plus 3 that are always on |
-| **Storage** | Postgres, 22 tables — memory, history, stickers, schedules, supporters, roadmap, spend |
+| **Storage** | Postgres, 24 tables — memory, history, stickers, schedules, supporters, roadmap, spend |
 | **Runs on** | A Dokploy VPS behind Traefik, alongside the WhatsApp gateway it talks to |
 | **Guarded by** | 18 check scripts that exercise the real thing rather than asserting about it |
 
@@ -89,7 +89,7 @@ flowchart LR
         PAGES["landing · /dashboard"]
     end
 
-    PG[("Postgres<br/>22 tables")]
+    PG[("Postgres<br/>24 tables")]
 
     WA -->|"every message"| SESSION
     SESSION -->|"signed webhook"| HOOK
@@ -659,6 +659,13 @@ process spawn per call.
 2. **What the bot may do with it**, decided on the dashboard — always the tighter of the two,
    because the token is issued once and the bot is exposed to a group chat all day.
 
+**Two lists, and they answer different questions.** *Where it can be used* is who may ask —
+every chat, or only the groups you tick. *Repositories it may write to* is where writes land. A
+group can be trusted to file issues on one repository without every group being able to, and the
+two move for different reasons: one when a room is adopted, the other when a repository is. A
+chat GitHub is switched off in is never told it exists, so the bot does not offer something it
+would then refuse.
+
 Reading is open: a public repository is public, and gating "how many stars does X have" would
 make the feature useless without making anything safer. Writing is off entirely until switched
 on, and then:
@@ -701,8 +708,8 @@ Personal access tokens`, paste it on `/dashboard/github`, tick what it may do, a
 repositories it may write to.
 
 ```bash
-npm run github-check    # the refusals: the allowlist, each switch, the daily ceiling, and that
-                        # nothing works at all before an account is connected
+npm run github-check    # the refusals: which chats may ask, the allowlist, each switch, the
+                        # daily ceiling, and whether the installed token can really write there
 ```
 
 ## Google Sheets

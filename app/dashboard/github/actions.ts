@@ -35,6 +35,7 @@ export async function savePermissions(formData: FormData): Promise<void> {
     canOpenIssues: on("canOpenIssues"),
     canComment: on("canComment"),
     canCreateRepos: on("canCreateRepos"),
+    canDeployPages: on("canDeployPages"),
     // The checkbox reads "allow public repositories", so it is the inverse of what is stored.
     reposPrivate: !on("allowPublic"),
     maxWritesPerDay: Number(formData.get("maxWritesPerDay") ?? 10),

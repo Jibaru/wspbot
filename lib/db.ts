@@ -349,6 +349,8 @@ const migrate = async (): Promise<void> => {
      * without one — a NOT NULL read against a missing column throws on every dashboard page.
      */
     alter table github_settings add column if not exists chat_mode text not null default 'everywhere';
+    -- Publishing a site is a write like the others, and off until somebody says otherwise.
+    alter table github_settings add column if not exists can_deploy_pages boolean not null default false;
 
     create table if not exists github_chats (
       chat      text primary key,

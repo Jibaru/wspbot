@@ -214,7 +214,7 @@ export const FEATURES: Feature[] = [
     key: "github",
     title: "Works with GitHub",
     detail:
-      "Looks up repositories and issues, and — where it has been given permission — opens issues, comments on them and creates repositories, as the bot's own GitHub account. Reading is open; every write needs its own switch, only lands on repositories named on the dashboard, and is recorded with who asked for it.",
+      "Looks up repositories and issues, and — where it has been given permission — opens issues, comments on them, creates repositories and publishes them as websites with GitHub Pages, as the bot's own GitHub account. Reading is open; every write needs its own switch, only lands on repositories named on the dashboard, and is recorded with who asked for it. It can also be limited to particular groups.",
     claim: "look things up on GitHub, and open issues where it is allowed to",
     tools: [
       "github_repo",
@@ -223,6 +223,7 @@ export const FEATURES: Feature[] = [
       "github_open_issue",
       "github_comment",
       "github_create_repo",
+      "github_pages",
     ],
   },
   {

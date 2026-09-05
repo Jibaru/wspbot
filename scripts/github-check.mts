@@ -50,6 +50,7 @@ type Saved = {
   can_open_issues: boolean;
   can_comment: boolean;
   can_create_repos: boolean;
+  can_deploy_pages: boolean;
   repos_private: boolean;
   max_writes_per_day: number;
   connected_at: Date | null;
@@ -63,7 +64,7 @@ type Saved = {
 
 const saved = (
   await query<Saved>(
-    "select token, login, scopes, hint, owner, can_open_issues, can_comment, can_create_repos, repos_private, max_writes_per_day, connected_at, chat_mode from github_settings where id = 1",
+    "select token, login, scopes, hint, owner, can_open_issues, can_comment, can_create_repos, can_deploy_pages, repos_private, max_writes_per_day, connected_at, chat_mode from github_settings where id = 1",
   )
 )[0];
 
@@ -71,8 +72,8 @@ const restore = async () => {
   await query("delete from github_settings where id = 1");
   if (saved) {
     await query(
-      `insert into github_settings (id, token, login, scopes, hint, owner, can_open_issues, can_comment, can_create_repos, repos_private, max_writes_per_day, connected_at, chat_mode)
-       values (1, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+      `insert into github_settings (id, token, login, scopes, hint, owner, can_open_issues, can_comment, can_create_repos, can_deploy_pages, repos_private, max_writes_per_day, connected_at, chat_mode)
+       values (1, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
       [
         saved.token,
         saved.login,
@@ -82,6 +83,7 @@ const restore = async () => {
         saved.can_open_issues,
         saved.can_comment,
         saved.can_create_repos,
+        saved.can_deploy_pages,
         saved.repos_private,
         saved.max_writes_per_day,
         saved.connected_at,
@@ -140,7 +142,8 @@ try {
     `insert into github_settings (id, token, login, can_open_issues, can_comment, can_create_repos)
      values (1, $1, 'check-account', false, false, false)
      on conflict (id) do update set token = excluded.token, login = excluded.login,
-       can_open_issues = false, can_comment = false, can_create_repos = false`,
+       can_open_issues = false, can_comment = false, can_create_repos = false,
+       can_deploy_pages = false`,
     [seal("ghp_not_a_real_token")],
   );
 
@@ -158,6 +161,14 @@ try {
   const repoOff = await github.createRepo({ name: `${MARK}-repo` }, { who: MARK });
   check("so is creating a repository", !repoOff.ok);
 
+  const pagesOff = await github.deployPages(FAKE, {}, { who: MARK });
+  check("so is publishing a site", !pagesOff.ok);
+  check(
+    "and it names that switch rather than another",
+    !pagesOff.ok && pagesOff.why.includes("publishing sites"),
+    !pagesOff.ok ? `— ${pagesOff.why}` : "",
+  );
+
   // ── the allowlist, with the switch on ──────────────────────────────────
   console.log("\nswitched on, but pointed somewhere it may not write:");
   await github.setPermissions({
@@ -165,6 +176,7 @@ try {
     canOpenIssues: true,
     canComment: true,
     canCreateRepos: true,
+    canDeployPages: true,
     reposPrivate: true,
     maxWritesPerDay: 10,
   });
@@ -181,6 +193,18 @@ try {
   check("commenting there too", !commentElsewhere.ok);
 
   /*
+   * Publishing is the write that reaches furthest — it puts a repository on the public web — so
+   * it has to obey the same list as the rest rather than being waved through as "just a setting".
+   */
+  const pagesElsewhere = await github.deployPages(STRANGER, {}, { who: MARK });
+  check("and publishing a site somewhere unlisted", !pagesElsewhere.ok);
+  check(
+    "for the list, not the switch",
+    !pagesElsewhere.ok && pagesElsewhere.why.includes("not on the list"),
+    !pagesElsewhere.ok ? `— ${pagesElsewhere.why}` : "",
+  );
+
+  /*
    * The allowed repository is deliberately *not* attempted: it would reach the API with a
    * nonsense token and open nothing, but the point of a check is not to find out. Everything up
    * to the decision has been asserted; the decision itself is the feature.
@@ -193,6 +217,7 @@ try {
     canOpenIssues: true,
     canComment: true,
     canCreateRepos: true,
+    canDeployPages: true,
     reposPrivate: true,
     maxWritesPerDay: 2,
   });
@@ -220,6 +245,8 @@ try {
   });
   const zero = await github.openIssue(FAKE, { title: `${MARK} zero` }, { who: MARK });
   check("a ceiling of zero stops everything", !zero.ok);
+  const pagesCapped = await github.deployPages(FAKE, {}, { who: MARK });
+  check("publishing counts against the same ceiling", !pagesCapped.ok);
 
   // ── with nothing connected ─────────────────────────────────────────────
   console.log("\nwith no account connected:");

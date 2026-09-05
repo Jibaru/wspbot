@@ -35,7 +35,7 @@ bot   → Done.
 |  |  |
 | --- | --- |
 | **What it is** | One Next.js container: a webhook that answers WhatsApp, and a dashboard that decides what it may do |
-| **Abilities** | 24 switchable features over 44 model tools, plus 3 that are always on |
+| **Abilities** | 24 switchable features over 45 model tools, plus 3 that are always on |
 | **Storage** | Postgres, 24 tables — memory, history, stickers, schedules, supporters, roadmap, spend |
 | **Runs on** | A Dokploy VPS behind Traefik, alongside the WhatsApp gateway it talks to |
 | **Guarded by** | 18 check scripts that exercise the real thing rather than asserting about it |
@@ -81,7 +81,7 @@ flowchart LR
         GATE["mentions<br/>is this message for me?"]
         LIMIT["rate limit<br/>before anything costs money"]
         REC["recorder<br/>untagged, recorded groups only"]
-        AGENT["agent<br/>system prompt + 44 tools"]
+        AGENT["agent<br/>system prompt + 45 tools"]
         TIMERS["timers<br/>session 2m · reminders 30s · digests 1m · chime-ins 1m"]
         FEAT["features<br/>24 switches own every tool<br/>read from Postgres every turn"]
         FF["ffmpeg · Chromium<br/>stickers · voice · video · rendering"]
@@ -349,6 +349,7 @@ Beyond text, the bot decides for itself when one of these fits — you just ask 
 | "add that to the meeting notes page" | finds the page and appends it |
 | "make a sticker of a sleepy capybara" | draws one, transparent background, and keeps it |
 | "make a sticker from <gif link>" | downloads it and converts it, animation intact |
+| "publish that repo and send me the link" | switches GitHub Pages on and gives back the address |
 | "show me that as a table" | lays it out in HTML, renders it, sends it as a picture |
 | "render crafterstation.com and send a photo" | opens the page in a real browser, sends a screenshot |
 
@@ -658,6 +659,20 @@ process spawn per call.
    than every switch below, which is why the page asks for one of those.
 2. **What the bot may do with it**, decided on the dashboard — always the tighter of the two,
    because the token is issued once and the bot is exposed to a group chat all day.
+
+**Publishing a repository as a website.** `github_pages` switches GitHub Pages on for a
+repository and answers with its public address. It is idempotent, because "deploy it" and "what
+is the URL?" are the same question asked twice: a repository that is already published returns
+the same address and gets a fresh build requested, rather than an error about it already
+existing.
+
+Two things about Pages that are easy to be caught by, and which the bot is told to say out loud:
+
+- **The address exists before the site does.** GitHub returns `html_url` the moment Pages is
+  switched on, while the first build takes a minute or two — so a link handed over immediately
+  404s for a while. The build status comes back with it, and the bot says which it is.
+- **It needs admin on the repository**, which in practice means one the bot's own account owns.
+  A private repository cannot have a public site at all without a paid plan.
 
 **Two lists, and they answer different questions.** *Where it can be used* is who may ask —
 every chat, or only the groups you tick. *Repositories it may write to* is where writes land. A

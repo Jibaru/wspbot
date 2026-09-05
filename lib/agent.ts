@@ -226,6 +226,7 @@ const systemPrompt = async (turn: Turn, on: Set<string>): Promise<string> => {
                   gh.canCreateRepos
                     ? `create repositories${gh.reposPrivate ? " (always private)" : ""}`
                     : "",
+                  gh.canDeployPages ? "publish a repository as a website with GitHub Pages" : "",
                 ]
                   .filter(Boolean)
                   .join(", ")}.${
@@ -233,6 +234,11 @@ const systemPrompt = async (turn: Turn, on: Set<string>): Promise<string> => {
                     ? ` Issues and comments only land on: ${ghRepos.map((r) => r.repo).join(", ")}. Anywhere else is refused, and that is a setting rather than something to work around.`
                     : " No repository has been approved for writing to yet, so those will be refused until one is."
                 }`,
+                ...(gh.canDeployPages
+                  ? [
+                      "- A published site is only as public as its repository, and a private repository cannot have one at all without a paid plan — if publishing is refused for that reason, say so rather than retrying.",
+                    ]
+                  : []),
                 "- Writing to GitHub is public and permanent, and every issue carries the name of whoever asked. Open one when somebody actually wants it filed — a bug, a request, something to remember — and not to acknowledge a passing remark. Say what you filed and link it.",
               ]
             : [
@@ -1325,6 +1331,46 @@ const toolsFor = (turn: Turn, sent: string[]) => ({
         return result.ok
           ? `Created it: ${result.url}. It is initialised with a README, and I may now open issues on it.`
           : `Not created — ${result.why}.`;
+      } catch (err) {
+        return err instanceof Error ? err.message : String(err);
+      }
+    },
+  }),
+
+  github_pages: tool({
+    description:
+      "Publish a repository as a website with GitHub Pages, and give back its public address. Asking for a repository that is already published returns the same address and requests a fresh build, so it is also the way to answer 'what is the URL?' or 'rebuild it'.",
+    inputSchema: z.object({
+      repo: z.string().describe('Like "kekito-crafter/my-site".'),
+      branch: z
+        .string()
+        .optional()
+        .describe("Which branch to publish. Leave it out to use the repository's default."),
+      path: z
+        .enum(["/", "/docs"])
+        .optional()
+        .describe("The folder within that branch. GitHub allows only the root or /docs."),
+    }),
+    execute: async ({ repo, branch, path }) => {
+      try {
+        const result = await github.deployPages(
+          repo,
+          { ...(branch ? { branch } : {}), ...(path ? { path } : {}) },
+          { chat: turn.chat, who: turn.senderName },
+        );
+        if (!result.ok) return `Not published — ${result.why}.`;
+
+        const { url, status, created } = result.site;
+        /*
+         * The address exists before the site does: GitHub returns it the moment Pages is switched
+         * on, and the first build takes a minute or two. Saying so is the difference between a
+         * link that works and a link somebody opens straight away and finds empty.
+         */
+        const settling =
+          status === "built"
+            ? ""
+            : " It is building — the address usually starts working within a minute or two, and shows a 404 until it does.";
+        return `${created ? "Published" : "Already published"}: ${url}${settling} Give them that address.`;
       } catch (err) {
         return err instanceof Error ? err.message : String(err);
       }

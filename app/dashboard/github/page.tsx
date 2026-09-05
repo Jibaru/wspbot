@@ -48,7 +48,9 @@ export default async function GithubPage() {
   const on = enabled?.has("github") ?? true;
   const s = settings;
   const connected = Boolean(s?.login);
-  const writesOn = Boolean(s && (s.canOpenIssues || s.canComment || s.canCreateRepos));
+  const writesOn = Boolean(
+    s && (s.canOpenIssues || s.canComment || s.canCreateRepos || s.canDeployPages),
+  );
 
   return (
     <>
@@ -171,6 +173,20 @@ export default async function GithubPage() {
                   defaultChecked={s?.canCreateRepos ?? false}
                 />
                 <span>Create repositories</span>
+              </label>
+              <label className="pick">
+                <input
+                  type="checkbox"
+                  name="canDeployPages"
+                  defaultChecked={s?.canDeployPages ?? false}
+                />
+                <span>
+                  Publish repositories as websites (GitHub Pages)
+                  <span className="meta">
+                    Needs admin on the repository, so in practice its own; a private repository
+                    cannot have one without a paid plan.
+                  </span>
+                </span>
               </label>
               <label className="pick">
                 <input

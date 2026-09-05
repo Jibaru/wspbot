@@ -51,6 +51,7 @@ export type Settings = {
   canOpenIssues: boolean;
   canComment: boolean;
   canCreateRepos: boolean;
+  canDeployPages: boolean;
   /** A repository created by a chat message should not be public by accident. */
   reposPrivate: boolean;
   maxWritesPerDay: number;
@@ -65,13 +66,14 @@ type Row = {
   can_open_issues: boolean;
   can_comment: boolean;
   can_create_repos: boolean;
+  can_deploy_pages: boolean;
   repos_private: boolean;
   max_writes_per_day: number;
   connected_at: Date | null;
 };
 
 const COLUMNS =
-  "login, scopes, hint, owner, can_open_issues, can_comment, can_create_repos, repos_private, max_writes_per_day, connected_at";
+  "login, scopes, hint, owner, can_open_issues, can_comment, can_create_repos, can_deploy_pages, repos_private, max_writes_per_day, connected_at";
 
 const DEFAULTS: Settings = {
   login: null,
@@ -81,6 +83,7 @@ const DEFAULTS: Settings = {
   canOpenIssues: false,
   canComment: false,
   canCreateRepos: false,
+  canDeployPages: false,
   reposPrivate: true,
   maxWritesPerDay: 10,
   connectedAt: null,
@@ -102,6 +105,7 @@ export const settings = async (): Promise<Settings> => {
     canOpenIssues: row.can_open_issues,
     canComment: row.can_comment,
     canCreateRepos: row.can_create_repos,
+    canDeployPages: row.can_deploy_pages,
     reposPrivate: row.repos_private,
     maxWritesPerDay: Number(row.max_writes_per_day),
     connectedAt: row.connected_at,
@@ -160,6 +164,7 @@ export type Permissions = {
   canOpenIssues?: boolean;
   canComment?: boolean;
   canCreateRepos?: boolean;
+  canDeployPages?: boolean;
   reposPrivate?: boolean;
   maxWritesPerDay?: number;
 };
@@ -170,13 +175,14 @@ export const setPermissions = async (input: Permissions): Promise<void> => {
     : 10;
 
   await query(
-    `insert into github_settings (id, owner, can_open_issues, can_comment, can_create_repos, repos_private, max_writes_per_day)
-     values (1, $1, $2, $3, $4, $5, $6)
+    `insert into github_settings (id, owner, can_open_issues, can_comment, can_create_repos, can_deploy_pages, repos_private, max_writes_per_day)
+     values (1, $1, $2, $3, $4, $5, $6, $7)
      on conflict (id) do update set
        owner              = excluded.owner,
        can_open_issues    = excluded.can_open_issues,
        can_comment        = excluded.can_comment,
        can_create_repos   = excluded.can_create_repos,
+       can_deploy_pages   = excluded.can_deploy_pages,
        repos_private      = excluded.repos_private,
        max_writes_per_day = excluded.max_writes_per_day`,
     [
@@ -184,6 +190,7 @@ export const setPermissions = async (input: Permissions): Promise<void> => {
       input.canOpenIssues ?? false,
       input.canComment ?? false,
       input.canCreateRepos ?? false,
+      input.canDeployPages ?? false,
       input.reposPrivate ?? true,
       cap,
     ],
@@ -595,7 +602,7 @@ export type By = { chat?: string | null; who?: string | null; where?: string | n
  * error that reaches the model as a stack trace is not.
  */
 const refuse = async (
-  what: "open_issue" | "comment" | "create_repo",
+  what: "open_issue" | "comment" | "create_repo" | "deploy_pages",
   repoName: string | null,
 ): Promise<string | null> => {
   const s = await settings();
@@ -604,6 +611,7 @@ const refuse = async (
   if (what === "open_issue" && !s.canOpenIssues) return "opening issues is switched off";
   if (what === "comment" && !s.canComment) return "commenting is switched off";
   if (what === "create_repo" && !s.canCreateRepos) return "creating repositories is switched off";
+  if (what === "deploy_pages" && !s.canDeployPages) return "publishing sites is switched off";
 
   if (repoName && !(await isAllowed(repoName))) {
     return `${normalise(repoName)} is not on the list of repositories I may write to`;
@@ -853,6 +861,112 @@ export const statuses = async (): Promise<RepoStatus[]> => {
       }
     }),
   );
+};
+
+// ── GitHub Pages ─────────────────────────────────────────────────────────
+
+/**
+ * Publishing a repository as a website.
+ *
+ * Idempotent on purpose, because "deploy it" and "what is the address?" are the same question
+ * asked twice and a person in a chat will ask both. Enabling a site that already exists answers
+ * 409, which is not a failure — it is the answer. So this reads first, enables only when there is
+ * nothing there, and returns the URL either way.
+ *
+ * The URL exists before the site does. GitHub answers with `html_url` the moment Pages is
+ * switched on, while the first build takes a minute or two, so a link handed over immediately is
+ * a link that 404s for a while. The status is returned alongside it, and the tool says so.
+ */
+export type Site = {
+  url: string;
+  /** `built`, `building`, `errored`, or `null` before the first build has been recorded. */
+  status: string | null;
+  branch: string | null;
+  path: string | null;
+  /** True when this call is what turned it on, rather than it already being there. */
+  created: boolean;
+};
+
+type PagesBody = {
+  html_url: string;
+  status: string | null;
+  source?: { branch?: string; path?: string };
+};
+
+const toSite = (body: PagesBody, created: boolean): Site => ({
+  url: body.html_url,
+  status: body.status,
+  branch: body.source?.branch ?? null,
+  path: body.source?.path ?? null,
+  created,
+});
+
+/** What is published there now, or null when nothing is. A read: no switch, no allowlist. */
+export const site = async (name: string): Promise<Site | null> => {
+  const path = normalise(name);
+  if (!VALID.test(path)) throw new GitHubError(`"${name}" is not an owner/name pair`);
+  try {
+    const res = await request("GET", `/repos/${path}/pages`);
+    return toSite(res.body as PagesBody, false);
+  } catch (err) {
+    // 404 here means "no site", which is an answer rather than a problem.
+    if (err instanceof GitHubError && /does not exist|not found|no permission/i.test(err.message)) {
+      return null;
+    }
+    throw err;
+  }
+};
+
+export type Deployed = { ok: true; site: Site } | { ok: false; why: string };
+
+export const deployPages = async (
+  name: string,
+  options: { branch?: string; path?: "/" | "/docs" } = {},
+  by: By = {},
+): Promise<Deployed> => {
+  const why = await refuse("deploy_pages", name);
+  if (why) return { ok: false, why };
+
+  const path = normalise(name);
+
+  const existing = await site(path);
+  if (existing) {
+    /*
+     * Already published. Asking for a fresh build is the useful half of "deploy it again", and it
+     * is allowed to fail: a repository built by a workflow rather than from a branch refuses this
+     * endpoint, and the site is fine either way.
+     */
+    await request("POST", `/repos/${path}/pages/builds`).catch(() => undefined);
+    await record({
+      chat: by.chat ?? null,
+      who: by.who ?? null,
+      action: "deploy_pages",
+      target: path,
+      detail: "rebuilt",
+    });
+    return { ok: true, site: { ...existing, created: false } };
+  }
+
+  /*
+   * The branch has to be one that exists, and the repository's own default is the only safe
+   * guess — "main" is wrong often enough to matter, and the failure is a 422 that reads as
+   * nothing in particular.
+   */
+  const branch = options.branch ?? (await repo(path)).defaultBranch;
+
+  const created = await request("POST", `/repos/${path}/pages`, {
+    body: { source: { branch, path: options.path ?? "/" } },
+  });
+
+  await record({
+    chat: by.chat ?? null,
+    who: by.who ?? null,
+    action: "deploy_pages",
+    target: path,
+    detail: `from ${branch}${options.path ?? "/"}`,
+  });
+
+  return { ok: true, site: toSite(created.body as PagesBody, true) };
 };
 
 /** Organisations the token can act in, for the owner picker. */

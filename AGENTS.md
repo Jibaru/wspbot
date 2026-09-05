@@ -350,9 +350,22 @@ like a simplification opportunity.
   is still global; a general per-chat table is still a rewrite, not a tweak.
 - **"Only these groups" with no groups means nowhere.** The inverse would be an integration that
   became available everywhere the moment somebody cleared the list. `github-check` states it.
-- **A new `github_settings` column has to be added to `github-check`'s restore too.** It reads the
-  real row and puts it back; a column missing there is silently reset to its default — `chat_mode`
-  was, which turned "only these groups" back into "everywhere" on every run of the check.
+- **A new `github_settings` column has to be added in four places**, and the compiler catches
+  only two of them: the DDL, `Settings`/`COLUMNS`/`setPermissions` in `lib/github.ts`, the
+  dashboard form, and `github-check`'s restore. That restore reads the real row and puts it back,
+  so a column missing there is silently reset to its default — `chat_mode` was, which turned
+  "only these groups" back into "everywhere" on every run of the check.
+- **`github_pages` has to be idempotent, and 409 is an answer.** "Deploy it" and "what is the
+  URL?" are the same question asked twice. It reads first, enables only when there is nothing
+  there, and requests a build otherwise — and that build request is allowed to fail, since a
+  repository built by a workflow rather than from a branch refuses that endpoint while its site
+  is perfectly fine.
+- **A Pages URL exists before the site does.** GitHub answers with `html_url` the moment Pages is
+  on; the first build takes a minute or two, so a link handed over immediately 404s. The status
+  is returned with it and the prompt tells the bot to say which it is, or the feature reads as
+  broken on its first use.
+- **The publishing branch is the repository's default, not "main".** Guessing is a 422 that reads
+  as nothing in particular, so `deployPages` looks the default branch up when none is given.
 - **Writes fail closed.** An empty `github_repos` means no repository may be written to, not
   "any". A default of "anywhere" would be one migration away from a bot that opens issues on
   strangers' repositories because somebody in a group asked it to.

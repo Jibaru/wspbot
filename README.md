@@ -35,7 +35,7 @@ bot   → Done.
 |  |  |
 | --- | --- |
 | **What it is** | One Next.js container: a webhook that answers WhatsApp, and a dashboard that decides what it may do |
-| **Abilities** | 24 switchable features over 47 model tools, plus 3 that are always on |
+| **Abilities** | 24 switchable features over 48 model tools, plus 3 that are always on |
 | **Storage** | Postgres, 24 tables — memory, history, stickers, schedules, supporters, roadmap, spend |
 | **Runs on** | A Dokploy VPS behind Traefik, alongside the WhatsApp gateway it talks to |
 | **Guarded by** | 18 check scripts that exercise the real thing rather than asserting about it |
@@ -81,7 +81,7 @@ flowchart LR
         GATE["mentions<br/>is this message for me?"]
         LIMIT["rate limit<br/>before anything costs money"]
         REC["recorder<br/>untagged, recorded groups only"]
-        AGENT["agent<br/>system prompt + 47 tools"]
+        AGENT["agent<br/>system prompt + 48 tools"]
         TIMERS["timers<br/>session 2m · reminders 30s · digests 1m · chime-ins 1m"]
         FEAT["features<br/>24 switches own every tool<br/>read from Postgres every turn"]
         FF["ffmpeg · Chromium<br/>stickers · voice · video · rendering"]
@@ -689,7 +689,19 @@ is the URL?" are the same question asked twice: a repository that is already pub
 the same address and gets a fresh build requested, rather than an error about it already
 existing.
 
-Two things about Pages that are easy to be caught by, and which the bot is told to say out loud:
+**Pages needs a public repository.** It is free on public ones and a paid feature on private
+ones, so publishing a private repository fails with *"Your current plan does not support GitHub
+Pages for this repository"* — a true sentence that says nothing about the fix. `github_repo` takes
+the visibility as a deliberate choice, `github_set_visibility` changes it afterwards, and the
+error names the remedy.
+
+Making a repository **public** is governed by the same setting that governs creating public ones,
+because the two are the same act with the same consequence: everything in that repository, and
+every commit ever made to it, in front of the world — from a chat message. Going *private* needs
+only the repository-administration switch. The bot cannot grant itself either.
+
+Two more things about Pages that are easy to be caught by, and which the bot is told to say out
+loud:
 
 - **The address exists before the site does.** GitHub returns `html_url` the moment Pages is
   switched on, while the first build takes a minute or two — so a link handed over immediately

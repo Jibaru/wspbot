@@ -383,9 +383,19 @@ type Response = { status: number; body: unknown; headers: Headers };
  *
  * Two hours to find, one sentence to say. So it says it.
  */
-const explain = (status: number, message: string, method: string, path: string): string => {
+export const explain = (status: number, message: string, method: string, path: string): string => {
   const writing = method !== "GET";
   const repo = /^\/repos\/([^/]+\/[^/]+)/.exec(path)?.[1];
+
+  /*
+   * The one that cost an afternoon. Everything was correct — switch on, repository allowlisted,
+   * files committed — and GitHub answered "Your current plan does not support GitHub Pages for
+   * this repository", which is true and says nothing about what to do. Pages on a *private*
+   * repository needs a paid plan; on a public one it is free.
+   */
+  if (/plan does not support/i.test(message)) {
+    return `${message} GitHub Pages is free on a public repository and needs a paid plan on a private one, so making ${repo ?? "it"} public is the fix.`;
+  }
 
   if (status === 401) {
     return "that token is no longer valid — it may have expired or been revoked. Add a new one on the dashboard";
@@ -702,11 +712,13 @@ export const createRepo = async (
   if (!name) return { ok: false, why: "that is not a usable repository name" };
 
   /*
-   * Private unless the dashboard says otherwise, and never public just because a message asked
-   * for it: "make it public" from a group chat is exactly the request that should need somebody
-   * to have decided in advance.
+   * The dashboard decides whether public is possible at all; within that, the request decides.
+   * `s.reposPrivate` is a ceiling, not a default — reading it as both is what made every
+   * repository private even with public allowed, and a private repository cannot have a Pages
+   * site on a free plan, so the whole publish-a-website path failed one step later with an
+   * error about billing.
    */
-  const isPrivate = s.reposPrivate ? true : (input.private ?? true);
+  const isPrivate = s.reposPrivate ? true : (input.private ?? false);
 
   const owner = s.owner && s.owner !== s.login ? s.owner : null;
   const created = await request(
@@ -995,6 +1007,55 @@ Asked for by ${by.who} through wspbot.` : ""}`,
     files: clean.length,
     branch,
   };
+};
+
+/**
+ * Making a repository public, or private again.
+ *
+ * Governed by two settings rather than one, because the two directions are not the same act.
+ * Going private is tidying up. Going **public** puts everything in that repository, and every
+ * commit ever made to it, in front of the world — from a chat message. So it needs the same
+ * decision that governs creating a public repository, taken in advance on the dashboard, and the
+ * bot cannot grant it to itself no matter how the request is phrased.
+ *
+ * Repository administration, so it sits under the same switch as creating them.
+ */
+export const setVisibility = async (
+  name: string,
+  makePublic: boolean,
+  by: By = {},
+): Promise<Written> => {
+  const why = await refuse("create_repo", name);
+  if (why) return { ok: false, why };
+
+  const current = await settings();
+  if (makePublic && current.reposPrivate) {
+    return {
+      ok: false,
+      why: "making a repository public is switched off here — somebody has to allow it on the dashboard first",
+    };
+  }
+
+  const path = normalise(name);
+  const before = await repo(path);
+  if (before.private !== makePublic) {
+    // Already how it was asked for. Saying so beats a no-op that looks like a change.
+    return { ok: true, url: before.url };
+  }
+
+  const updated = await request("PATCH", `/repos/${path}`, {
+    body: { private: !makePublic },
+  });
+
+  await record({
+    chat: by.chat ?? null,
+    who: by.who ?? null,
+    action: "set_visibility",
+    target: path,
+    detail: makePublic ? "public" : "private",
+  });
+
+  return { ok: true, url: (updated.body as { html_url: string }).html_url };
 };
 
 // ── GitHub Pages ─────────────────────────────────────────────────────────

@@ -368,6 +368,17 @@ like a simplification opportunity.
   first version selected every `bytes` column to decide which 20MB of 49MB to publish, and that
   query is heavy enough to be cancelled outright — which surfaces as a Postgres error in the
   middle of an export, not as slowness.
+- **`reposPrivate` is a ceiling, not a default.** Reading it as both made every repository
+  private even with public allowed — the tool had no visibility argument at all — and a private
+  repository cannot have a Pages site on a free plan, so the whole publish-a-website path failed
+  one step later with a message about billing. The dashboard decides what is *possible*; the
+  request decides within that.
+- **"Your current plan does not support GitHub Pages for this repository" means "make it
+  public".** It is a 403, so the general permission branch of `explain()` swallowed it and
+  produced a paragraph about fine-grained tokens instead; the plan case has to be tested first.
+- **Making a repository public is gated by the same setting as creating public ones**, and going
+  private is not. They are not symmetrical: one publishes every commit ever made to the world
+  from a chat message, the other tidies up.
 - **`github_pages` has to be idempotent, and 409 is an answer.** "Deploy it" and "what is the
   URL?" are the same question asked twice. It reads first, enables only when there is nothing
   there, and requests a build otherwise — and that build request is allowed to fail, since a

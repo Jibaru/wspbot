@@ -164,6 +164,9 @@ try {
   const repoOff = await github.createRepo({ name: `${MARK}-repo` }, { who: MARK });
   check("so is creating a repository", !repoOff.ok);
 
+  const visibilityOff = await github.setVisibility(FAKE, true, { who: MARK });
+  check("so is changing what is public", !visibilityOff.ok);
+
   const pagesOff = await github.deployPages(FAKE, {}, { who: MARK });
   check("so is publishing a site", !pagesOff.ok);
 
@@ -316,6 +319,59 @@ try {
 
   await github.setChats([], "everywhere");
   github.forgetScope();
+
+  // ── making something public ────────────────────────────────────────────
+  console.log("\nmaking something public:");
+  /*
+   * The asymmetry is the point. Going private is tidying up; going public puts a repository and
+   * every commit in it in front of the world, from a chat message. So it needs the decision that
+   * was taken in advance on the dashboard, and the bot cannot grant it to itself.
+   */
+  /*
+   * A token first. The section above deletes the settings row, and without one every answer here
+   * is "GitHub is not connected" — which passes a check about refusing to publish while testing
+   * nothing at all. It did, once.
+   */
+  await query(
+    `insert into github_settings (id, token, login) values (1, $1, 'check-account')
+     on conflict (id) do update set token = excluded.token, login = excluded.login`,
+    [seal("ghp_not_a_real_token")],
+  );
+  await github.setPermissions({
+    owner: "check-account",
+    canOpenIssues: true,
+    canComment: true,
+    canCreateRepos: true,
+    canDeployPages: true,
+    canPushFiles: true,
+    reposPrivate: true,
+    maxWritesPerDay: 50,
+  });
+  const toPublic = await github.setVisibility(FAKE, true, { who: MARK });
+  check("public is refused while public repositories are switched off", !toPublic.ok);
+  check(
+    "and it says a person has to allow it, not that it failed",
+    !toPublic.ok && toPublic.why.includes("dashboard"),
+    !toPublic.ok ? `— ${toPublic.why}` : "",
+  );
+
+  const strangerPublic = await github.setVisibility(STRANGER, false, { who: MARK });
+  check("and the allowlist still applies to it", !strangerPublic.ok);
+
+  // ── the plan error ─────────────────────────────────────────────────────
+  console.log("\nwhen GitHub says the plan does not allow it:");
+  /*
+   * The message that cost an afternoon: everything was correct and Pages still refused, because
+   * a private repository needs a paid plan for it. GitHub says so and says nothing about the fix.
+   */
+  const planned = github.explain(
+    403,
+    "Your current plan does not support GitHub Pages for this repository.",
+    "POST",
+    "/repos/kekito-crafter/wspbot-stickers/pages",
+  );
+  check("the explanation names the fix", planned.includes("public"), `— ${planned}`);
+  check("and keeps what GitHub said", planned.includes("plan does not support"));
 
   // ── can it actually write there? ───────────────────────────────────────
   console.log("\ncan it actually write there:");

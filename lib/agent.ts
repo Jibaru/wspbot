@@ -238,7 +238,11 @@ const systemPrompt = async (turn: Turn, on: Set<string>): Promise<string> => {
                 }`,
                 ...(gh.canDeployPages
                   ? [
-                      "- A published site is only as public as its repository, and a private repository cannot have one at all without a paid plan — if publishing is refused for that reason, say so rather than retrying.",
+                      `- **GitHub Pages needs a public repository.** It is free on public ones and a paid feature on private ones, so publishing a private repository fails with a message about billing. ${
+                        gh.canCreateRepos && !gh.reposPrivate
+                          ? "Create it public in the first place, or use `github_set_visibility` to make an existing one public before publishing."
+                          : "Public repositories are switched off here, so say plainly that a site cannot be published until somebody allows them on the dashboard."
+                      }`,
                     ]
                   : []),
                 ...(gh.canPushFiles && gh.canDeployPages
@@ -1329,20 +1333,51 @@ const toolsFor = (turn: Turn, sent: string[]) => ({
 
   github_create_repo: tool({
     description:
-      "Create a new repository under your own GitHub account. Private unless this deployment has been configured to allow public ones — do not promise a public repository, say what was actually made.",
+      "Create a new repository under your own GitHub account. Whether a public one is allowed at all is a setting here — if it is not, you get a private repository whatever you ask for, so say what was actually made rather than what was requested.",
     inputSchema: z.object({
       name: z.string().describe("Letters, digits, dots, dashes and underscores."),
       description: z.string().optional(),
+      visibility: z
+        .enum(["public", "private"])
+        .describe(
+          "Choose deliberately. A repository that will be published as a website has to be public — GitHub Pages is free on public repositories and needs a paid plan on private ones. Anything holding somebody's own work or data should be private.",
+        ),
     }),
-    execute: async ({ name, description }) => {
+    execute: async ({ name, description, visibility }) => {
       try {
         const result = await github.createRepo(
-          { name, ...(description ? { description } : {}) },
+          {
+            name,
+            ...(description ? { description } : {}),
+            private: visibility === "private",
+          },
           { chat: turn.chat, who: turn.senderName },
         );
         return result.ok
           ? `Created it: ${result.url}. It is initialised with a README, and I may now open issues on it.`
           : `Not created — ${result.why}.`;
+      } catch (err) {
+        return err instanceof Error ? err.message : String(err);
+      }
+    },
+  }),
+
+  github_set_visibility: tool({
+    description:
+      "Make an existing repository public, or private again. Making one public is refused unless this deployment allows public repositories — that is a setting somebody took in advance, not something to work around. Use it when a repository has to be published as a website, since GitHub Pages needs a public repository on a free plan.",
+    inputSchema: z.object({
+      repo: z.string().describe('Like "kekito-crafter/my-site".'),
+      visibility: z.enum(["public", "private"]),
+    }),
+    execute: async ({ repo, visibility }) => {
+      try {
+        const result = await github.setVisibility(repo, visibility === "public", {
+          chat: turn.chat,
+          who: turn.senderName,
+        });
+        return result.ok
+          ? `${repo} is now ${visibility}: ${result.url}`
+          : `Not changed — ${result.why}.`;
       } catch (err) {
         return err instanceof Error ? err.message : String(err);
       }

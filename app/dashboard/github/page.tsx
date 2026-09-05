@@ -177,7 +177,12 @@ export default async function GithubPage() {
                   name="canCreateRepos"
                   defaultChecked={s?.canCreateRepos ?? false}
                 />
-                <span>Create repositories</span>
+                <span>
+                  Create repositories, and change whether they are public
+                  <span className="meta">
+                    Repository administration. Making one public still needs the setting below.
+                  </span>
+                </span>
               </label>
               <label className="pick">
                 <input
@@ -213,7 +218,14 @@ export default async function GithubPage() {
                   name="allowPublic"
                   defaultChecked={!(s?.reposPrivate ?? true)}
                 />
-                <span>Let those repositories be public</span>
+                <span>
+                  Let repositories be public
+                  <span className="meta">
+                    Required for GitHub Pages: a site is free on a public repository and needs a
+                    paid plan on a private one. Without this, everything it creates stays private
+                    and cannot be published.
+                  </span>
+                </span>
               </label>
             </div>
 

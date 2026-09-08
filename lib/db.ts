@@ -511,6 +511,48 @@ const migrate = async (): Promise<void> => {
       updated_at timestamptz not null default now()
     );
 
+    /*
+     * Groups told when a vote leaderboard moves.
+     *
+     * Keyed on the chat: two watches in one group would be two notifications about the same
+     * number, and the primary key is cheaper than finding that out from the group.
+     *
+     * last_position / last_votes / last_gap are the snapshot the *announcement* left behind, and
+     * "did it move?" is measured against them. They advance only on a message that actually
+     * went out — a standing that changed while the send was failing has to still read as changed
+     * on the next tick, or the one announcement anybody cared about is the one that is skipped.
+     *
+     * last_minute is the claim, written in the same statement that reads it, so two overlapping
+     * ticks or a second container cannot both announce the same minute.
+     */
+    create table if not exists leaderboard_watch (
+      chat            text primary key,
+      chat_name       text,
+      enabled         boolean     not null default true,
+      -- Five-field cron, evaluated in BOT_TIMEZONE. A ceiling on how often it may speak here.
+      cron            text        not null default '*/10 * * * *',
+      quiet_from      integer     not null default 23,
+      quiet_to        integer     not null default 8,
+      max_per_day     integer     not null default 6,
+      -- Off means every firing speaks, which is how a group learns to mute the bot.
+      on_change_only  boolean     not null default true,
+      -- Attach a screenshot of the board. Costs a Chromium run per message that goes out, which
+      -- the daily cap bounds; the figures never come from it.
+      with_picture    boolean     not null default true,
+      -- A vote ends. Without this the bot is still announcing a frozen board next month.
+      ends_at         timestamptz,
+      last_position   integer,
+      last_votes      integer,
+      last_gap        integer,
+      -- The daily cap, counted in a local day rather than a UTC one.
+      announced_day   text,
+      announced_count integer     not null default 0,
+      last_minute     text,
+      last_run_at     timestamptz,
+      last_error      text,
+      created_at      timestamptz not null default now()
+    );
+
     create table if not exists notion_connections (
       chat           text primary key,
       access_token   text        not null,

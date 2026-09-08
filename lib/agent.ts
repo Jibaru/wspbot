@@ -29,6 +29,7 @@ import * as github from "./github";
 import * as stickerSite from "./sticker-site";
 import * as supporters from "./supporters";
 import * as roadmap from "./roadmap";
+import * as leaderboard from "./leaderboard";
 import { render as renderHtml, capture } from "./render-html";
 import { toVoiceNote, VOICE_NOTE_MIMETYPE, VOICE_NOTE_FILENAME } from "./audio";
 import { fetchDecrypted } from "./inbound-media";
@@ -267,6 +268,11 @@ const systemPrompt = async (turn: Turn, on: Set<string>): Promise<string> => {
           "- GitHub is switched on but no account is connected yet, so anything to do with GitHub will fail. Say that it needs connecting on the dashboard.",
         ]
       : []),
+    ...(has("leaderboard")
+      ? [
+          "- `leaderboard` reads the live vote count and works out the gap to the next place. See the section on it below.",
+        ]
+      : []),
     ...(has("usage_report")
       ? [
           "- `check_usage` reports what you have cost so far. Use it when someone asks about tokens, usage or spending, and read the figures back plainly.",
@@ -340,6 +346,23 @@ const systemPrompt = async (turn: Turn, on: Set<string>): Promise<string> => {
           "- A file often has several tabs. Reading one names the others, so if the answer is not in the tab you read, read the tab that sounds right rather than concluding the data is absent. `sheet_info` lists them all.",
           `- ${config.googleServiceAccount() ? "You can write as well: `sheet_update` changes a specific range, `sheet_append` adds rows at the end. Read before writing so you target the right row, name what you are about to change, and prefer appending over overwriting when either would do." : "You can only read. If someone wants a change made, say that writing is not set up on this deployment rather than pretending to have done it."}`,
           "- Answer questions like \"what is missing?\" by looking at the rows yourself and naming them, rather than describing the sheet in general terms.",
+          "",
+        ]
+      : []),
+    ...(has("leaderboard")
+      ? [
+          "The leaderboard:",
+          leaderboard.configured()
+            ? "- `leaderboard` is the only place these figures come from. Call it every time somebody asks how the voting is going, what position we are in, or how many votes we need \u2014 never answer from an earlier turn, because the count moves every few seconds."
+            : "- No leaderboard is configured on this deployment, so there is nothing to read. Say that plainly if anyone asks about votes or positions.",
+          "- Lead with the gap: how many votes to take the next place, and from whom. That is what anyone asking actually wants; the full table is noise on a phone.",
+          "- The tool has done the arithmetic. Read its numbers back as they are \u2014 do not add, subtract or round them, and never give a figure it did not give you.",
+          "- If it says the figures are not current, say so in the same breath as the numbers.",
+          ...(has("screenshot")
+            ? [
+                "- If somebody wants to *see* the board rather than hear the numbers, `leaderboard` gives you its address and `screenshot_page` takes the picture. The figures still come from `leaderboard`; never read one off an image.",
+              ]
+            : []),
           "",
         ]
       : []),
@@ -1642,6 +1665,28 @@ const toolsFor = (turn: Turn, sent: string[]) => ({
       "Report how much you have cost: tokens used today, over the last week, and in total, with an estimated spend. Use it when someone asks about usage, tokens, cost or spending.",
     inputSchema: z.object({}),
     execute: async () => usage.report(),
+  }),
+
+  leaderboard: tool({
+    description:
+      "Read the live public vote count and work out where we stand: the position, the votes, and exactly how many more are needed to take the next place. Use it whenever someone asks how the voting is going, what position we are in, or how far off the next place we are \u2014 the count changes constantly, so call it again rather than reusing an earlier answer. It takes no arguments: which board and which project are fixed by this deployment.",
+    inputSchema: z.object({}),
+    execute: async () => {
+      const cfg = config.leaderboard();
+      if (!cfg) return "No leaderboard is configured on this deployment, so there is nothing to read.";
+      try {
+        const reading = await leaderboard.read();
+        const standing = leaderboard.standing(reading.projects, cfg.slug);
+        if (!standing) {
+          return `The board was read (${reading.projects.length} projects) but "${cfg.slug}" is not on it. Say that rather than guessing at a position.`;
+        }
+        return leaderboard.summary(standing, reading);
+      } catch (err) {
+        const why = err instanceof Error ? err.message : String(err);
+        console.error("[leaderboard] read failed:", why);
+        return `Could not read the leaderboard: ${why}. Say that you could not check right now \u2014 do not give a position from memory.`;
+      }
+    },
   }),
 
   name_sticker: tool({

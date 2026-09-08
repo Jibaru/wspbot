@@ -2,7 +2,7 @@
   "name": "wspbot",
   "version": "0.1.0",
   "private": true,
-  "description": "A WhatsApp bot that answers when tagged — searches the web and remembers what you tell it.",
+  "description": "A WhatsApp bot that answers when tagged \u2014 searches the web and remembers what you tell it.",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -17,6 +17,7 @@
     "github-check": "tsx --conditions=react-server --env-file=.env scripts/github-check.mts",
     "chime-check": "tsx --conditions=react-server --env-file=.env scripts/chime-check.mts",
     "roadmap-check": "tsx --conditions=react-server --env-file=.env scripts/roadmap-check.mts",
+    "leaderboard-check": "tsx --conditions=react-server --env-file-if-exists=.env scripts/leaderboard-check.mts",
     "features-check": "tsx --conditions=react-server scripts/features-check.mts",
     "wapi-check": "tsx --conditions=react-server --env-file=.env scripts/wapi-check.mts",
     "vendor-wapi-sdk": "node scripts/vendor-wapi-sdk.mjs",

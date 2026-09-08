@@ -35,10 +35,10 @@ bot   → Done.
 |  |  |
 | --- | --- |
 | **What it is** | One Next.js container: a webhook that answers WhatsApp, and a dashboard that decides what it may do |
-| **Abilities** | 24 switchable features over 48 model tools, plus 3 that are always on |
-| **Storage** | Postgres, 24 tables — memory, history, stickers, schedules, supporters, roadmap, spend |
+| **Abilities** | 25 switchable features over 49 model tools, plus 3 that are always on |
+| **Storage** | Postgres, 25 tables — memory, history, stickers, schedules, supporters, roadmap, spend |
 | **Runs on** | A Dokploy VPS behind Traefik, alongside the WhatsApp gateway it talks to |
-| **Guarded by** | 18 check scripts that exercise the real thing rather than asserting about it |
+| **Guarded by** | 19 check scripts that exercise the real thing rather than asserting about it |
 
 ## Contents
 
@@ -170,7 +170,7 @@ Same look as the landing page — forged gold on obsidian, Geist throughout — 
 same product. There is one theme rather than a light and a dark: the brand's resting state is
 obsidian, and a dashboard read beside the front door is better off matching it.
 
-Eleven sections under `/dashboard`, each behind the sign-in:
+Fourteen sections under `/dashboard`, each behind the sign-in:
 
 | | |
 | --- | --- |
@@ -181,6 +181,9 @@ Eleven sections under `/dashboard`, each behind the sign-in:
 | `/dashboard/memory` | What it has been told to remember |
 | `/dashboard/reminders` | Everything scheduled, across every chat |
 | `/dashboard/summaries` | Scheduled digests of a group |
+| `/dashboard/chime` | Groups it may speak in unprompted |
+| `/dashboard/leaderboard` | Where we stand in the vote, and who gets told |
+| `/dashboard/github` | The connected account, what it may write, and where |
 | `/dashboard/supporters` | Who has chipped in, and the Buy Me a Coffee sync |
 | `/dashboard/roadmap` | What to build next, and the votes behind it |
 | `/dashboard/move` | Move a group's context into another group |
@@ -882,6 +885,80 @@ you switch anything on.
 npm run chime-check     # the cadence, the cap, quiet hours across midnight, and the claim
 ```
 
+## Following a vote
+
+A hackathon leaderboard is a page somebody reloads forty times a day. The bot follows it instead,
+and answers the only question anyone is actually asking: **how many votes to take the next
+place.**
+
+Ask it in a chat — *"¿cómo vamos?"* — and it reads the live count and says. `LEADERBOARD_URL` is
+the board and `LEADERBOARD_SLUG` is which project on it is ours; without both, the ability is not
+offered at all rather than offered and broken.
+
+**Every figure is read; none is taken off a picture.** A screenshot was the obvious build —
+`capture` already exists, the page looks good — and as the *source* it is wrong twice over. It
+makes the model read figures off an image, which is the one place it is confidently wrong, and it
+starts Chromium on a box that is also running Postgres and the whole wapi stack. Read from the
+board's own data the numbers are exact and free.
+
+A picture is still attached to a scheduled announcement, with the figures as its caption, and the
+two are not in tension: a message nobody asked for has to be worth opening, and a league table is
+a thing people want to look at. It costs one browser run per message that actually goes out —
+bounded by the daily cap — and a capture that fails costs the picture, not the message.
+
+**Ties share a position, and that is where the bug lives.** "The next place" is not the row above
+in the table: eight projects on nought votes are all seventeenth, and passing them costs two
+votes, not one. So the gap is measured against the next *distinct* vote total, and everyone
+holding it has to be passed. Two answers come out of it, because they are different questions —
+`23` to pass the place above, `22` to draw level and share it.
+
+**First place is a third question, and the only one the board does not answer.** The page
+publishes the next objective and nothing else, so "how far off winning are we?" — the thing
+anybody in the running actually wants — is computed here, against the top total and with the same
+tie rule. From second the two collapse into one number, and the message says it once rather than
+printing it twice under two headings.
+
+`npm run leaderboard-check` pins that with fixtures, and then does something better: it reads the
+live board twice, as JSON and as HTML, and compares our arithmetic against the arithmetic the
+site prints for itself. Two implementations agreeing is worth more than any assertion written by
+hand — and a redesign that removes the phrase fails the check rather than quietly blinding it.
+
+### Telling a group
+
+`/dashboard/leaderboard` sets up groups that hear about it. As with chime-ins there is no tool
+for this and it cannot be arranged from a chat: a watch belongs to the *chat*, not to the person
+who asked, so one person switching it on commits the whole room to recurring notifications.
+
+**The announcement does not go through the model.** A chime does, because what it says is a
+judgement; this sentence is a subtraction. A model in this path could add nothing but latency,
+cost, and the one failure that would matter — a number that is almost right.
+
+Restraint again, for the same reason as chime-ins:
+
+| Condition | Default | Why |
+| --- | --- | --- |
+| Only when it moves | on | a place, a vote count or a gap that changed. Off, it sends on every check — which is how a group learns to mute the bot |
+| Attach a picture | on | a screenshot of the board, captioned with the figures. Off is text only |
+| How often it looks | every 10 min | a ceiling, not a timer |
+| Outside quiet hours | 23:00–08:00 | the one failure nobody would forgive is a 4am notification |
+| Under the daily cap | 6 | counted in a local day |
+| Before the vote ends | — | worth setting: without it the bot is still announcing a frozen board next month |
+
+The snapshot each group was last told is what "moved" is measured against, and it advances only
+after a message has **actually gone out** — a standing that changed while the send was failing
+has to still read as changed on the next tick, or the one announcement anybody cared about is the
+one that gets skipped. A failure is recorded on the dashboard and never sent to the group: a
+board that would not load is not worth a message, and a daily apology is how a useful
+notification becomes noise.
+
+The dashboard shows the live standing above the rows, in the same words the bot would use, and
+every row has **Send now** — which is the difference between finding a problem in a minute and
+finding it tomorrow.
+
+```bash
+npm run leaderboard-check # the gap arithmetic, ties included, against the board's own answer
+```
+
 ## Moving context between groups
 
 Groups get remade — a new one for the same team, a project room that supersedes a channel, a chat
@@ -1050,6 +1127,8 @@ insert into memories (chat, text) values ('global', 'the office wifi password is
 | `BOT_TIMEZONE` | `UTC` | What "9am" means. Reminders and summary schedules are wrong without it. |
 | `BOT_SUMMARY_MODEL` | `gpt-5.6-sol` | Writes the scheduled digests. Worth the top tier: it runs rarely, on a long transcript, and a digest that drops the decision is worse than none. |
 | `BOT_RATE_LIMIT_PER_MINUTE` | `1` | Default allowance per person. Override individuals on `/dashboard/limits`. |
+| `LEADERBOARD_URL` | — | The public vote board to follow. Unset, the leaderboard is not offered at all. |
+| `LEADERBOARD_SLUG` | — | Which project on that board is ours. Needed alongside the URL; one without the other does nothing. |
 
 Replies are requested at low verbosity — a WhatsApp message that needs scrolling has already
 failed. The bot's manners live in the system prompt in `lib/agent.ts`.
@@ -1073,6 +1152,7 @@ npm run models-check    # the configured models accept the parameters this app s
 npm run draw-check      # generates one real image and checks alpha survives (costs money)
 npm run github-check    # every GitHub refusal, and one real read (needs DATABASE_URL)
 npm run chime-check     # chime-in restraint: cadence, daily cap, quiet hours, double-claim
+npm run leaderboard-check # the gap arithmetic, ties included, against the board's own answer
 npm run render-check    # a real Chromium render, and a real page captured: a PNG, a table that
                         # stays a table, and every private address refused
 npm run build           # typecheck and production build

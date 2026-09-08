@@ -20,4 +20,7 @@ export async function register() {
 
   const { startChimes } = await import("./lib/chime-runner");
   startChimes();
+
+  const { startLeaderboard } = await import("./lib/leaderboard-runner");
+  startLeaderboard();
 }

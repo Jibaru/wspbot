@@ -96,6 +96,19 @@ export const config = {
     return clientId && clientSecret ? { clientId, clientSecret } : null;
   },
 
+  /**
+   * The public vote leaderboard this bot follows, and which project on it is ours.
+   *
+   * Both or neither: a URL with no slug cannot answer "what position are we in", and a slug with
+   * no URL has nothing to read. Null means the feature is switched on but not set up here, which
+   * the dashboard says out loud rather than leaving as a tool that fails when someone asks.
+   */
+  leaderboard: (): { url: string; slug: string } | null => {
+    const url = optional("LEADERBOARD_URL");
+    const slug = optional("LEADERBOARD_SLUG");
+    return url && slug ? { url: url.replace(/\/$/, ""), slug } : null;
+  },
+
   /** Any model your account can reach on the OpenAI Responses API. */
   model: () => optional("BOT_MODEL") ?? "gpt-5.6",
 

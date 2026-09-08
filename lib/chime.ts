@@ -217,12 +217,13 @@ export const localHour = (at: Date): number =>
  * neither of its endpoints in the usual order. Written out rather than clever, because the bug
  * this would otherwise have is "the bot messaged the group at four in the morning".
  */
-export const isQuiet = (settings: Settings, at: Date): boolean => {
-  const { quietFrom: from, quietTo: to } = settings;
+export const quiet = (from: number, to: number, hour: number): boolean => {
   if (from === to) return false;
-  const h = localHour(at);
-  return from < to ? h >= from && h < to : h >= from || h < to;
+  return from < to ? hour >= from && hour < to : hour >= from || hour < to;
 };
+
+export const isQuiet = (settings: Settings, at: Date): boolean =>
+  quiet(settings.quietFrom, settings.quietTo, localHour(at));
 
 /** The local day, as a key. Used for the daily cap, which is a *local* day to whoever reads it. */
 export const dayKey = (at: Date): string =>

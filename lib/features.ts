@@ -27,7 +27,7 @@ export type Feature = {
   /** Tool names withdrawn when this is off. Some features are prompt- or handler-only. */
   tools: string[];
   /** Also needs deployment configuration; the dashboard says so rather than lying about it. */
-  needs?: "notion" | "sheets";
+  needs?: "notion" | "sheets" | "leaderboard";
 };
 
 /**
@@ -243,6 +243,15 @@ export const FEATURES: Feature[] = [
       "Give it a link and it opens the page in a real browser and sends back a screenshot — the top of it, or the whole thing. It never opens an address inside the private network, and it carries none of the bot's own logins.",
     claim: "screenshot a web page you link",
     tools: ["screenshot_page"],
+  },
+  {
+    key: "leaderboard",
+    title: "Follows a vote leaderboard",
+    detail:
+      "Knows where one project stands in a public vote count and what it would take to move up a place \u2014 the exact gap, not an estimate. Anyone in the chat can ask; a group can also be set up on the dashboard to be told when the standing changes.",
+    claim: "say where we stand on the vote leaderboard, and what the next place costs",
+    tools: ["leaderboard"],
+    needs: "leaderboard",
   },
   {
     key: "roadmap",

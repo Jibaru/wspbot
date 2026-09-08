@@ -57,6 +57,8 @@ lib/roadmap.ts                   supporter-weighted voting on what to build next
 lib/people.ts                    identities gathered from four tables, for the rate-limit picker
 lib/chime.ts                     chiming in: which groups, how restrained, and why not now
 lib/chime-runner.ts              fires it, through the ordinary turn
+lib/leaderboard.ts               a public vote board: the gap to the next place, and who is told
+lib/leaderboard-runner.ts        fires it, without the model — the sentence is a subtraction
 lib/summaries.ts                 scheduled digests: schedules, the log, the transcript
 lib/summary-recorder.ts          writing down a recorded group; lib/summary-runner.ts fires it
 lib/cron.ts                      five-field cron, evaluated as "does this minute match?"
@@ -325,6 +327,58 @@ like a simplification opportunity.
   browser driven over CDP and plenty of sites read it. Hiding it evades no login and no paywall —
   the capture signs in nowhere — it is the difference between a picture of the site and a picture
   of "checking your browser".
+- **The leaderboard's numbers are read as JSON; the picture is decoration.** `capture` exists,
+  the board is a good looking page, and a screenshot is one call — and as the *source* it is
+  wrong twice: it puts the model in the position of reading figures off an image, which is where
+  it is confidently wrong, and it starts Chromium on a box already running Postgres and the wapi
+  stack. So `/api/leaderboard` is the source, and a screenshot rides along on an announcement
+  with the figures as its caption — one message, not two, and a capture that fails costs the
+  picture rather than the notification. The two are not in tension as long as no figure is ever
+  taken off the image; if that ever changes, this whole feature is a guess.
+- **First place is a separate sum from the next place, and the board never publishes it.** The
+  page shows only "siguiente objetivo", so `toBeat` against the top total is the figure nobody
+  can read off it — which is exactly why it is the one worth computing. From second the two are
+  the same number, and `firstIsNext` exists so the message does not print it twice under two
+  headings, which reads as a bug even though both lines are true.
+- **The announcement is assembled as blocks, not as a filtered list of lines.** The first version
+  built one flat array and filtered the empties, which dropped the deliberate blank separators
+  along with the optional lines and ran the whole message into a wall. Nothing typechecks a
+  layout; `leaderboard-check` asserts the blocks.
+- **Ties share a position, so "the next place" is not the row above.** Eight projects on nought
+  votes are all seventeenth, and passing them costs *two* votes. The gap is measured against the
+  next **distinct** higher total, and everyone holding it has to be passed — `toBeat` is that
+  total minus ours plus one, `toTie` is one less and shares the place. An index-based
+  `list[i - 1]` gives a plausible wrong answer, which nobody in the group would question.
+  `npm run leaderboard-check` pins it with fixtures *and* against the phrase the board prints for
+  itself, so a redesign that removes that phrase fails rather than blinding the comparison.
+- **That endpoint is the site's own internal route, not a contract.** It is validated with zod and
+  a payload that no longer parses has to surface as "I could not read the board". The one thing
+  that must never happen is a plausible figure assembled out of a renamed field.
+- **The leaderboard tool takes no URL.** Which board and which project come from `config`. A tool
+  argument naming the endpoint would be the SSRF surface `lib/fetch-media.ts` exists to avoid, in
+  a feature that never needs it.
+- **`live` and `stale` are states, not failures.** A feed that is down and a row that did not
+  refresh are both "the last thing known", and reporting either as the score right now is the
+  quiet way this feature becomes wrong. Both paths say so — the announcement dates itself, the
+  tool result tells the model to.
+- **A leaderboard announcement does not go through the model, and a chime does.** The difference
+  is the content: a chime is a judgement, this is a subtraction. Routing it through `reply()`
+  would add latency, cost and the only failure that matters here — a number that is almost right.
+- **The announced snapshot moves on the send, not on the read.** Same shape as the reminder's
+  `next_at` and `last_chime_at`: if it moved when the board was read, a failed send would leave
+  the row looking announced and the one change anybody cared about is the one nobody hears.
+- **`holdReason` is a pure function of the row and the clock**, and deliberately does not ask
+  whether the deployment has a board configured — that is the page's business, and keeping it out
+  is what lets every refusal be asserted without an environment. The dashboard adds that reason
+  itself, because a row reading "ready" under a notice saying nothing is configured is a page
+  contradicting itself.
+- **Quiet hours have exactly one implementation.** `chime.quiet` is imported by the leaderboard
+  rather than written again: the midnight wrap is the one piece of arithmetic here whose bug is
+  "it messaged the group at four in the morning", and `chime-check` already asserts both
+  directions.
+- **A watch is per chat, so it is dashboard-only.** Asking how the voting is going is a tool
+  anyone in a group may reach; subscribing the room to recurring notifications is not something
+  one person should be able to do to everybody else. Same reasoning as chime-ins and rate limits.
 - **`new URL()` rewrites an IPv6 host, and it broke the SSRF guard.**
   `http://[::ffff:169.254.169.254]/` normalises to `::ffff:a9fe:a9fe`, so a pattern matching the
   dotted spelling passed the metadata endpoint through as public — in every feature taking a URL,
@@ -454,6 +508,8 @@ npm run github-check    # every GitHub refusal — the allowlist, each switch, t
                         # and that nothing works before an account is connected
 npm run chime-check     # chime-in restraint: the cadence, the daily cap, quiet hours across
                         # midnight, and that claiming twice cannot double-fire
+npm run leaderboard-check # the gap to the next place, ties included, checked against the
+                        # arithmetic the board prints for itself
 npm run summary-check   # one real digest end to end: does it keep the decision, the deadline,
                         # the links, and the right picture? (costs money, needs DATABASE_URL)
 npm run transfer-check  # moves real rows between two throwaway groups, including every refusal

@@ -562,6 +562,23 @@ const migrate = async (): Promise<void> => {
       created_at      timestamptz not null default now()
     );
 
+    /*
+     * The columns leaderboard_watch grew after it first shipped.
+     *
+     * A create-if-not-exists does nothing whatsoever to a table that already exists, so a
+     * column added to that statement reaches a fresh database and never an existing one -- and
+     * every check that verified the schema against an empty throwaway saw the create path and
+     * passed. It shipped, and the first read of the table in production failed on a missing
+     * column while every check was green.
+     *
+     * So a new column on an existing table needs its own "add column if not exists", here, in
+     * addition to the create above. Both, not either: the create keeps a fresh install to one
+     * statement, and these are what carry an existing one forward.
+     */
+    alter table leaderboard_watch add column if not exists with_picture  boolean not null default true;
+    alter table leaderboard_watch add column if not exists note          text;
+    alter table leaderboard_watch add column if not exists recent_cheers text;
+
     create table if not exists notion_connections (
       chat           text primary key,
       access_token   text        not null,

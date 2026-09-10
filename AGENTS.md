@@ -361,6 +361,15 @@ like a simplification opportunity.
   refresh are both "the last thing known", and reporting either as the score right now is the
   quiet way this feature becomes wrong. Both paths say so — the announcement dates itself, the
   tool result tells the model to.
+- **`create table if not exists` does nothing to a table that already exists, and that shipped a
+  broken deploy.** Three columns were added to `leaderboard_watch`'s create statement; the create
+  is a no-op on a live table, so they reached a fresh database and never the running one. The
+  first read in production failed on a missing column **with every check green** — because every
+  database check here starts from an empty throwaway, which takes the create path. A new column
+  on an existing table needs its own `alter table ... add column if not exists` beside the
+  create, and *verifying a migration against an empty database proves nothing about the upgrade*.
+  `leaderboard-check` now reads `WATCH_COLUMNS` and the DDL out of the source and refuses a
+  column that is selected and never created — which is the exact shape of that outage.
 - **A leaderboard's figures do not go through the model, and a chime does.** The difference is
   the content: a chime is a judgement, a gap is a subtraction. Routing the standing through
   `reply()` would add latency, cost and the only failure that matters here — a number that is

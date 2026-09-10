@@ -15,6 +15,7 @@
  *   npm run leaderboard-check
  */
 
+import { readFileSync } from "node:fs";
 import { config } from "../lib/config.js";
 import { quiet, localHour } from "../lib/chime.js";
 import * as cron from "../lib/cron.js";
@@ -388,6 +389,58 @@ ok(
  * the page, which prints its own answer to the same question. If they disagree, one of us is
  * wrong and it matters which.
  */
+/**
+ * Does the schema actually have every column the code reads?
+ *
+ * This is the check that was missing when a column added to `create table if not exists` shipped
+ * without an `add column if not exists` beside it. The create statement is a no-op on a table
+ * that already exists, so the column reached a fresh database and never the running one — and
+ * every check here verified the schema against an empty throwaway, which takes the create path
+ * and passes. Production's first read of the table then failed on a missing column with all of
+ * them green.
+ *
+ * Static, and reading the two real files rather than a list: `WATCH_COLUMNS` is what every query
+ * selects, so a name in there with no home in the DDL is the exact shape of that outage. It does
+ * not prove the migration runs — nothing but a database with the old table can — but it is free,
+ * it needs no connection, and it catches the mismatch.
+ */
+console.log("\nthe schema and the columns the code reads:");
+{
+  const lib = readFileSync(new URL("../lib/leaderboard.ts", import.meta.url), "utf8");
+  const ddl = readFileSync(new URL("../lib/db.ts", import.meta.url), "utf8");
+
+  const selected =
+    /const WATCH_COLUMNS =\s*\n?\s*"([^"]+)"/.exec(lib)?.[1]?.split(",").map((c) => c.trim()) ?? [];
+  ok(`WATCH_COLUMNS parsed (${selected.length} columns)`, selected.length > 5, "the pattern drifted from the source");
+
+  const create = /create table if not exists leaderboard_watch \(([\s\S]*?)\n    \);/.exec(ddl)?.[1] ?? "";
+  const created = new Set(
+    [...create.matchAll(/^\s{6}([a-z_]+)\s+(?:text|boolean|integer|timestamptz)/gm)].map((m) => m[1] as string),
+  );
+  const altered = new Set(
+    [...ddl.matchAll(/alter table leaderboard_watch add column if not exists\s+([a-z_]+)/g)].map((m) => m[1] as string),
+  );
+  ok(`the create statement was found (${created.size} columns)`, created.size > 5, "the pattern drifted from the DDL");
+
+  const homeless = selected.filter((c) => !created.has(c));
+  ok(
+    `every selected column exists in the DDL${homeless.length ? "" : ` (${selected.length})`}`,
+    homeless.length === 0,
+    `${homeless.join(", ")} is selected and never created — this is the outage`,
+  );
+
+  /*
+   * An alter for a column the create statement does not have is the other direction of the same
+   * mistake: a fresh database would never get it.
+   */
+  const orphans = [...altered].filter((c) => !created.has(c));
+  ok(
+    `every migrated column is also in the create (${altered.size} migrated)`,
+    orphans.length === 0,
+    `${orphans.join(", ")} is altered in but never created`,
+  );
+}
+
 const cfg = config.leaderboard();
 if (!cfg) {
   console.log(

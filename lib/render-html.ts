@@ -216,8 +216,27 @@ export class CaptureError extends Error {}
 
 export type Captured = { png: Buffer; url: string; title: string; fullPage: boolean };
 
-export const capture = async (raw: string, fullPage = false): Promise<Captured> =>
+export type CaptureOptions = {
+  fullPage?: boolean;
+  /**
+   * Cut the picture off after the element this selector matches — from the top of the page down
+   * to its bottom edge.
+   *
+   * Expressed as "where does the interesting part end?" rather than as a height, because a height
+   * is a guess that goes wrong the moment the page's own layout moves: a league table cropped to
+   * 900px shows three rows today and two-and-a-half after somebody adds a banner. Asking the page
+   * where an element actually is survives that. A selector that matches nothing is not an error —
+   * the whole fold is captured, which is the same answer as not asking.
+   *
+   * The selector belongs to the caller, not here: this module knows nothing about any particular
+   * site and must not start.
+   */
+  cutAfter?: string;
+};
+
+export const capture = async (raw: string, options: CaptureOptions = {}): Promise<Captured> =>
   serialise(async () => {
+    const fullPage = options.fullPage ?? false;
     let target: URL;
     try {
       target = new URL(/^https?:\/\//i.test(raw) ? raw : `https://${raw}`);
@@ -306,12 +325,30 @@ export const capture = async (raw: string, fullPage = false): Promise<Captured> 
         throw new CaptureError(`${rebound} is inside the private network`);
       }
 
+      /*
+       * Measured after `settle`, so the number comes from the page as it will be photographed
+       * rather than as it was half-drawn. `null` when nothing matched, which reads as "no crop".
+       */
+      const cut = options.cutAfter ? await bottomOf(page, options.cutAfter) : null;
+
       const png = Buffer.from(
         await page.screenshot({
           type: "png",
-          fullPage,
+          fullPage: fullPage && cut === null,
           // A long page would otherwise produce a strip nobody can read on a phone.
-          ...(fullPage ? { captureBeyondViewport: true } : {}),
+          ...(fullPage && cut === null ? { captureBeyondViewport: true } : {}),
+          ...(cut === null
+            ? {}
+            : {
+                captureBeyondViewport: true,
+                clip: {
+                  x: 0,
+                  y: 0,
+                  width: PAGE_WIDTH,
+                  height: Math.min(Math.max(cut, 200), MAX_HEIGHT),
+                  scale: 1,
+                },
+              }),
         }),
       );
       const title = await page.title().catch(() => "");
@@ -333,6 +370,27 @@ export const capture = async (raw: string, fullPage = false): Promise<Captured> 
       await browser?.close().catch(() => undefined);
     }
   });
+
+/**
+ * Where the given element ends, in CSS pixels from the top of the document.
+ *
+ * `null` when the selector matches nothing, so a page that changed its markup produces the
+ * ordinary uncropped picture instead of an error or an empty strip. Best-effort by design: this
+ * is a framing preference, and losing it must never cost the screenshot.
+ */
+const bottomOf = async (page: Page, selector: string): Promise<number | null> => {
+  try {
+    return await page.evaluate((sel: string) => {
+      const el = document.querySelector(sel);
+      if (!el) return null;
+      const box = el.getBoundingClientRect();
+      // Plus a little air, so the last row does not sit flush against the edge.
+      return Math.ceil(box.bottom + window.scrollY + 12);
+    }, selector);
+  } catch {
+    return null;
+  }
+};
 
 /**
  * Wait for the page to have something on it.

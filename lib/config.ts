@@ -103,10 +103,29 @@ export const config = {
    * no URL has nothing to read. Null means the feature is switched on but not set up here, which
    * the dashboard says out loud rather than leaving as a tool that fails when someone asks.
    */
-  leaderboard: (): { url: string; slug: string } | null => {
+  leaderboard: ():
+    | { url: string; slug: string; voteUrl: string | null; cutAfter: string | null }
+    | null => {
     const url = optional("LEADERBOARD_URL");
     const slug = optional("LEADERBOARD_SLUG");
-    return url && slug ? { url: url.replace(/\/$/, ""), slug } : null;
+    if (!url || !slug) return null;
+    return {
+      url: url.replace(/\/$/, ""),
+      slug,
+      /*
+       * Where somebody actually casts a vote, which is usually not the board. "Go and vote" with
+       * nowhere to go is a call to action nobody can act on, and the page a board links to is not
+       * derivable from its data — so it is configuration, and absent it the message simply does
+       * not ask.
+       */
+      voteUrl: optional("LEADERBOARD_VOTE_URL") ?? null,
+      /*
+       * A CSS selector saying where the interesting part of the board ends, so the attached
+       * picture can stop after the podium instead of running to the fold. Board-specific by
+       * nature, which is exactly why it is not a constant in the code.
+       */
+      cutAfter: optional("LEADERBOARD_CROP") ?? null,
+    };
   },
 
   /** Any model your account can reach on the OpenAI Responses API. */

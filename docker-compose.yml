@@ -50,5 +50,8 @@ services:
       # the leaderboard tool is not offered and no group is told anything.
       LEADERBOARD_URL: ${LEADERBOARD_URL:-}
       LEADERBOARD_SLUG: ${LEADERBOARD_SLUG:-}
+      # Where to vote, and where the board's interesting part ends. Both optional.
+      LEADERBOARD_VOTE_URL: ${LEADERBOARD_VOTE_URL:-}
+      LEADERBOARD_CROP: ${LEADERBOARD_CROP:-}
     expose:
       - "3000"

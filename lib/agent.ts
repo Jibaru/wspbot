@@ -1562,7 +1562,7 @@ const toolsFor = (turn: Turn, sent: string[]) => ({
     }),
     execute: async ({ url, fullPage, caption }) => {
       try {
-        const shot = await capture(url, fullPage ?? false);
+        const shot = await capture(url, { fullPage: fullPage ?? false });
 
         const hosted = await wapi.upload({
           base64: shot.png.toString("base64"),

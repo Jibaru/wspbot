@@ -547,6 +547,15 @@ const migrate = async (): Promise<void> => {
       -- The daily cap, counted in a local day rather than a UTC one.
       announced_day   text,
       announced_count integer     not null default 0,
+      -- How to sound in this group, in the setter's own words: "peruano, seco, con jerga" or
+      -- "formal, es un grupo de clientes". Steers the closing line more than any switch here
+      -- does, and it is per group because a room is not the same room as the one next door.
+      -- Same idea as chime_settings.note, deliberately.
+      note            text,
+      -- The last few closing lines sent here, newest first, newline-separated. Handed back to
+      -- whoever writes the next one: the same prompt produces the same sentence, and twice a day
+      -- forever that is a message people stop reading by Wednesday.
+      recent_cheers   text,
       last_minute     text,
       last_run_at     timestamptz,
       last_error      text,

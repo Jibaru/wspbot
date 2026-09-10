@@ -47,6 +47,7 @@ export async function saveWatch(formData: FormData): Promise<void> {
     // An unchecked checkbox posts nothing at all, so absence is the "off" value.
     onChangeOnly: formData.get("onChangeOnly") !== null,
     withPicture: formData.get("withPicture") !== null,
+    note: String(formData.get("note") ?? ""),
     endsAt: endsAt && !Number.isNaN(endsAt.getTime()) ? endsAt : null,
   });
 

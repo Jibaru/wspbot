@@ -929,16 +929,26 @@ hand — and a redesign that removes the phrase fails the check rather than quie
 for this and it cannot be arranged from a chat: a watch belongs to the *chat*, not to the person
 who asked, so one person switching it on commits the whole room to recurring notifications.
 
-**The announcement does not go through the model.** A chime does, because what it says is a
-judgement; this sentence is a subtraction. A model in this path could add nothing but latency,
-cost, and the one failure that would matter — a number that is almost right.
+**The figures do not go through the model.** A chime does, because what it says is a judgement;
+a gap is a subtraction, and a model in that path could add nothing but latency, cost, and the one
+failure that would matter — a number that is almost right.
+
+**The closing line is the exception, and it proves the rule.** Asking people to vote *is* voice
+rather than arithmetic, and a fixed sentence twice a day is one nobody reads by Wednesday. So a
+model writes that line — shown the bot's own recent messages in that group, so it sounds like the
+same bot people talk to — and it is handed the *shape* of the race and never the numbers. It is
+also told what it has already said there, because asked the same question twice a model answers
+the same sentence twice: measured, four near-identical lines out of five, and six distinct out of
+six once the history is fed back. A line that comes back carrying a digit, a link, a second line
+or a claim about the project is thrown away for a written-in one — the figures above it are
+already correct, and an unchecked claim beside them is what this whole feature avoids.
 
 Restraint again, for the same reason as chime-ins:
 
 | Condition | Default | Why |
 | --- | --- | --- |
 | Only when it moves | on | a place, a vote count or a gap that changed. Off, it sends on every check — which is how a group learns to mute the bot |
-| Attach a picture | on | a screenshot of the board, captioned with the figures. Off is text only |
+| Attach a picture | on | a screenshot of the board, cut off after the podium when `LEADERBOARD_CROP` says where that is. Off is text only |
 | How often it looks | every 10 min | a ceiling, not a timer |
 | Outside quiet hours | 23:00–08:00 | the one failure nobody would forgive is a 4am notification |
 | Under the daily cap | 6 | counted in a local day |
@@ -1129,6 +1139,8 @@ insert into memories (chat, text) values ('global', 'the office wifi password is
 | `BOT_RATE_LIMIT_PER_MINUTE` | `1` | Default allowance per person. Override individuals on `/dashboard/limits`. |
 | `LEADERBOARD_URL` | — | The public vote board to follow. Unset, the leaderboard is not offered at all. |
 | `LEADERBOARD_SLUG` | — | Which project on that board is ours. Needed alongside the URL; one without the other does nothing. |
+| `LEADERBOARD_VOTE_URL` | — | Where a vote is cast, for the closing line. Unset, the message does not ask. |
+| `LEADERBOARD_CROP` | — | CSS selector for where the board's interesting part ends, so the picture stops after the podium. |
 
 Replies are requested at low verbosity — a WhatsApp message that needs scrolling has already
 failed. The bot's manners live in the system prompt in `lib/agent.ts`.

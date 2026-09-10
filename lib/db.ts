@@ -547,6 +547,10 @@ const migrate = async (): Promise<void> => {
       -- The daily cap, counted in a local day rather than a UTC one.
       announced_day   text,
       announced_count integer     not null default 0,
+      -- The last few closing lines sent here, newest first, newline-separated. Handed back to
+      -- whoever writes the next one: the same prompt produces the same sentence, and twice a day
+      -- forever that is a message people stop reading by Wednesday.
+      recent_cheers   text,
       last_minute     text,
       last_run_at     timestamptz,
       last_error      text,

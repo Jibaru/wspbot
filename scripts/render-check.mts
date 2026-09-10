@@ -170,10 +170,33 @@ if (!online) {
   check("and it read the page", /example/i.test(page.title), `— "${page.title}"`);
   writeFileSync(join(tmpdir(), "capture-check.png"), page.png);
 
-  const whole = await capture("https://example.com/", true);
+  const whole = await capture("https://example.com/", { fullPage: true });
   const wholeShot = readPng(whole.png);
   // A full-page shot is deliberately 1x: at 2x a long site is a picture too large to send.
   check("a full-page shot is 1x", wholeShot.width === 1000, `— ${wholeShot.width}`);
+
+  /*
+   * `cutAfter` measures the element rather than guessing a height, which is the whole point: a
+   * fixed height shows three rows of a table today and two-and-a-half once somebody adds a
+   * banner. Asserted against the real page, and asserted in both directions — a selector that
+   * matches nothing has to give back the ordinary picture rather than an empty strip.
+   */
+  const cut = await capture("https://example.com/", { cutAfter: "h1" });
+  const cutShot = readPng(cut.png);
+  check(
+    "cutAfter stops the picture at the element",
+    cutShot.height < shot.height,
+    `— ${cutShot.height} vs ${shot.height}`,
+  );
+  check("and keeps the width", cutShot.width === shot.width, `— ${cutShot.width}`);
+
+  const missed = await capture("https://example.com/", { cutAfter: ".not-on-this-page" });
+  const missedShot = readPng(missed.png);
+  check(
+    "a selector that matches nothing costs the crop, not the picture",
+    missedShot.height === shot.height,
+    `— ${missedShot.height} vs ${shot.height}`,
+  );
 }
 
 const out = join(tmpdir(), "render-check.png");

@@ -361,9 +361,29 @@ like a simplification opportunity.
   refresh are both "the last thing known", and reporting either as the score right now is the
   quiet way this feature becomes wrong. Both paths say so — the announcement dates itself, the
   tool result tells the model to.
-- **A leaderboard announcement does not go through the model, and a chime does.** The difference
-  is the content: a chime is a judgement, this is a subtraction. Routing it through `reply()`
-  would add latency, cost and the only failure that matters here — a number that is almost right.
+- **A leaderboard's figures do not go through the model, and a chime does.** The difference is
+  the content: a chime is a judgement, a gap is a subtraction. Routing the standing through
+  `reply()` would add latency, cost and the only failure that matters here — a number that is
+  almost right.
+- **The closing line is the one exception, and the fence around it is what makes it safe.** A
+  model writes it, shown the bot's own recent prose in *that* chat so it sounds like the same bot
+  people talk to. It is handed the *shape* of the race (`situation`) and never a number, and
+  `usableCheer` throws away anything carrying a digit, a link, a newline or 140+ characters —
+  falling back to a written-in pool, because an announcement must not fail for want of a
+  flourish. It is also told not to describe the project: it called one "proyecto anti-terremotos"
+  on the first run, which is the same class of failure as a wrong figure and is caught the same
+  way — this line may carry enthusiasm and nothing checkable.
+- **Variety comes from telling it what it already said, not from a temperature.** Asked the same
+  question twice a model answers the same sentence twice: four near-identical lines out of five,
+  measured, and two of them identical in one group. The reasoning tiers here do not reliably
+  accept a temperature either, so `recent_cheers` on the watch row carries the last six lines
+  back into the prompt — six distinct out of six afterwards. Like every other column there it
+  advances only on a send, so a discarded generation never counts as something the group heard.
+- **`capture` takes a `cutAfter` selector, and it measures rather than guesses.** A height is a
+  guess that shows three podium rows today and two-and-a-half once somebody adds a banner, so it
+  asks the page where the element actually ends. The selector is configuration
+  (`LEADERBOARD_CROP`) because `lib/render-html.ts` knows nothing about anybody's board and must
+  not start; one that matches nothing costs the crop, not the picture.
 - **The announced snapshot moves on the send, not on the read.** Same shape as the reminder's
   `next_at` and `last_chime_at`: if it moved when the board was read, a failed send would leave
   the row looking announced and the one change anybody cared about is the one nobody hears.

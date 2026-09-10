@@ -118,6 +118,9 @@ export const configured = (): boolean => config.leaderboard() !== null;
  */
 export const siteUrl = (): string | null => config.leaderboard()?.url ?? null;
 
+/** Where a vote is actually cast, when the deployment knows. Usually not the board itself. */
+export const voteUrl = (): string | null => config.leaderboard()?.voteUrl ?? null;
+
 export const read = async (): Promise<Reading> => {
   const cfg = config.leaderboard();
   if (!cfg) throw new Error("no leaderboard is configured on this deployment");
@@ -300,13 +303,104 @@ export const summary = (standing: Standing, reading: Reading): string => {
 };
 
 /**
+ * How the race looks, in words rather than in figures.
+ *
+ * This is what gets handed to whatever writes the closing line — including a model, which is
+ * given the *situation* and never the numbers. "Ya casi" is a lie at three hundred votes and the
+ * only thing worth saying at four, so the shape of the race has to reach the writer; the
+ * arithmetic does not, and cannot then be restated wrongly.
+ */
+export type Situation =
+  | "photo-finish"
+  | "within-reach"
+  | "a-long-way"
+  | "leading-safe"
+  | "leading-chased";
+
+export const situation = (standing: Standing): Situation => {
+  const { next, chaser } = standing;
+  if (!next) return chaser && chaser.lead <= 15 ? "leading-chased" : "leading-safe";
+  if (next.toBeat <= 5) return "photo-finish";
+  if (next.toBeat <= 25) return "within-reach";
+  return "a-long-way";
+};
+
+/**
+ * The written-in lines, and the reason there are several of each.
+ *
+ * A scheduled message that ends the same way twice a day for a week stops being read at all —
+ * people learn the shape of it and skip to the number. So one is picked at random per send.
+ *
+ * These are the *fallback*: the runner normally has a model write this line in the voice the bot
+ * actually uses in that group, which is the only way it sounds like the same bot people talk to.
+ * When that is unavailable or comes back unusable, these go out instead — an announcement must
+ * never fail for want of a closing flourish.
+ */
+const CHEERS: Record<Situation, string[]> = {
+  "photo-finish": [
+    "Esto se decide ahora, en serio.",
+    "Un puñado de votos y cambiamos de puesto.",
+    "Estamos pegaditos. Ahora o nunca.",
+  ],
+  "within-reach": [
+    "Está al alcance si nos movemos.",
+    "Un empujón de grupo y pasamos.",
+    "Falta poco, y poco se consigue rápido.",
+  ],
+  "a-long-way": [
+    "Cada voto cuenta y toma diez segundos.",
+    "Toma menos que leer este mensaje.",
+    "Diez segundos, y ayuda más de lo que parece.",
+    "Si no has votado, es el momento.",
+  ],
+  "leading-safe": [
+    "Vamos primeros. A defenderlo.",
+    "Primeros, y así se queda.",
+    "Arriba. No aflojemos.",
+  ],
+  "leading-chased": [
+    "Primeros, pero nos están pisando.",
+    "No se suelta ahora.",
+    "Vamos arriba y viene gente atrás.",
+  ],
+};
+
+/** One of the written-in lines. `pick` is injectable so a check can pin the choice. */
+export const cheerFor = (standing: Standing, pick: (n: number) => number = (n) => Math.floor(Math.random() * n)): string => {
+  const pool = CHEERS[situation(standing)];
+  return pool[pick(pool.length)] ?? (pool[0] as string);
+};
+
+/**
+ * A closing line is only allowed to carry encouragement, never a figure.
+ *
+ * The whole reason a model may write this at all is that it cannot be wrong here: the numbers
+ * are already in the message, produced by arithmetic, and a line with a digit in it is a second
+ * claim nobody checked. Rejected rather than repaired — the written-in pool is right there.
+ */
+export const usableCheer = (line: string): string | null => {
+  const clean = line.trim().replace(/^["“'‘]|["”'’]$/g, "").trim();
+  if (!clean) return null;
+  if (/\d/.test(clean)) return null;
+  if (/\n/.test(clean)) return null;
+  if (/https?:|www\./i.test(clean)) return null;
+  if (clean.length > 140) return null;
+  return clean;
+};
+
+/**
  * The scheduled announcement, ready to send.
  *
  * Written once in Spanish rather than composed by a model. There is nobody to mirror in an
  * unprompted push, the sentence is arithmetic, and a model in this path could only add cost and
  * the chance of a wrong number. `*bold*` is the only formatting WhatsApp renders.
  */
-export const announcement = (standing: Standing, reading: Reading): string => {
+export const announcement = (
+  standing: Standing,
+  reading: Reading,
+  /** A closing line written elsewhere — normally in the bot's own voice. Falls back to the pool. */
+  closing?: string | null,
+): string => {
   const { me, next, chaser } = standing;
   const head = `*${me.name}* · #${standing.position}${standing.shared ? " (empatado)" : ""} de ${
     standing.of
@@ -338,7 +432,22 @@ export const announcement = (standing: Standing, reading: Reading): string => {
    * one flat list — which dropped the blank separators along with the optional lines and ran the
    * whole thing together. Nothing typechecks that; it has to be read, or asserted.
    */
-  const blocks = [head, [gap, toFirst, tail].filter(Boolean).join("\n"), url ?? ""];
+  /*
+   * The board's own address is dropped when there is a vote link: two URLs in one message is a
+   * choice nobody wants to make, and the one that matters is the one where you vote. The picture
+   * above the caption is already the board.
+   */
+  const tailUrl = voteUrl() ? null : url;
+
+  const cheer = (closing && usableCheer(closing)) || cheerFor(standing);
+  const link = voteUrl();
+
+  const blocks = [
+    head,
+    [gap, toFirst, tail].filter(Boolean).join("\n"),
+    link ? `${cheer}\nVotá acá 👇\n${link}` : cheer,
+    tailUrl ?? "",
+  ];
   return blocks.filter(Boolean).join("\n\n");
 };
 
@@ -368,6 +477,8 @@ export type Watch = {
   /** What the last announcement said. `null` until one has gone out. */
   last: Snapshot | null;
   announcedToday: number;
+  /** Closing lines already used here, newest first. Kept so the next one can differ. */
+  recentCheers: string[];
   lastRunAt: Date | null;
   lastError: string | null;
 };
@@ -398,12 +509,13 @@ type WatchRow = {
   last_gap: number | null;
   announced_day: string | null;
   announced_count: number;
+  recent_cheers: string | null;
   last_run_at: Date | null;
   last_error: string | null;
 };
 
 const WATCH_COLUMNS =
-  "chat, chat_name, enabled, cron, quiet_from, quiet_to, max_per_day, on_change_only, with_picture, ends_at, last_position, last_votes, last_gap, announced_day, announced_count, last_run_at, last_error";
+  "chat, chat_name, enabled, cron, quiet_from, quiet_to, max_per_day, on_change_only, with_picture, ends_at, last_position, last_votes, last_gap, announced_day, announced_count, recent_cheers, last_run_at, last_error";
 
 const toWatch = (row: WatchRow, at: Date): Watch => ({
   chat: row.chat,
@@ -426,6 +538,7 @@ const toWatch = (row: WatchRow, at: Date): Watch => ({
         },
   // A count from another day is not this day's count, and the row is not rewritten until a send.
   announcedToday: row.announced_day === dayKey(at) ? Number(row.announced_count) : 0,
+  recentCheers: (row.recent_cheers ?? "").split("\n").filter(Boolean),
   lastRunAt: row.last_run_at,
   lastError: row.last_error,
 });
@@ -568,7 +681,16 @@ export const claim = async (chat: string, at: Date): Promise<boolean> => {
  * a send that failed would leave the row looking announced, and the one change anybody cared
  * about is the one nobody hears.
  */
-export const markAnnounced = (chat: string, standing: Standing, at: Date): Promise<unknown[]> =>
+/** How many past closing lines to keep. Enough to stop a rotation, short enough to stay a hint. */
+const CHEERS_REMEMBERED = 6;
+
+export const markAnnounced = (
+  chat: string,
+  standing: Standing,
+  at: Date,
+  /** The closing line that went out, so the next one can be told not to repeat it. */
+  cheer?: string | null,
+): Promise<unknown[]> =>
   query(
     `update leaderboard_watch
         set last_position   = $2,
@@ -576,9 +698,15 @@ export const markAnnounced = (chat: string, standing: Standing, at: Date): Promi
             last_gap        = $4,
             announced_day   = $5,
             announced_count = case when announced_day = $5 then announced_count + 1 else 1 end,
+            recent_cheers   = case
+                                when $6::text is null then recent_cheers
+                                else array_to_string(
+                                       (array[$6::text] || string_to_array(coalesce(recent_cheers, ''), E'\n'))[1:${CHEERS_REMEMBERED}],
+                                       E'\n')
+                              end,
             last_error      = null
       where chat = $1`,
-    [chat, standing.position, standing.me.votes, standing.next?.toBeat ?? null, dayKey(at)],
+    [chat, standing.position, standing.me.votes, standing.next?.toBeat ?? null, dayKey(at), cheer ?? null],
   );
 
 export const markFailed = (chat: string, error: string): Promise<unknown[]> =>

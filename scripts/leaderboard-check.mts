@@ -25,6 +25,9 @@ import {
   read,
   movement,
   holdReason,
+  situation,
+  cheerFor,
+  usableCheer,
   claim,
   markAnnounced,
   save,
@@ -200,6 +203,51 @@ ok("and gets both figures", forModel.includes("23") && forModel.includes("22"), 
  * last thing known, not the score now. Reporting either as current is the quiet way this becomes
  * wrong, so both paths have to say so.
  */
+/*
+ * The closing line is the one part of this message a model writes, and the only reason that is
+ * allowed is that it cannot be wrong: the figures are already above it, so a line carrying a
+ * number is a second claim nobody checked. Rejected, not repaired — the written-in pool is there.
+ */
+console.log("\nwhat a closing line is allowed to be:");
+check("plain encouragement passes", usableCheer("Vayan a votar, no cuesta nada."), "Vayan a votar, no cuesta nada.");
+check("surrounding quotes are stripped", usableCheer('"Voten pues"'), "Voten pues");
+check("curly quotes too", usableCheer("\u201cVoten pues\u201d"), "Voten pues");
+check("a digit is refused", usableCheer("Faltan 3 votos, vamos"), null);
+check("so is a lone number", usableCheer("Ya casi, 300 y pasamos"), null);
+check("a link is refused — one is added after it", usableCheer("Voten en https://x.com"), null);
+check("so is a second line", usableCheer("Voten pues\ny cuenten a sus amigos"), null);
+check("an empty answer is refused", usableCheer("   "), null);
+check("a speech is refused", usableCheer("a".repeat(141)), null);
+ok("140 characters is still fine", usableCheer("a".repeat(140)) !== null);
+
+console.log("\nthe written-in pool, which is the fallback when no line can be had:");
+// 23 votes off Stegora on the fixture board: close enough for the group to close it today.
+check("it knows the shape of the race", situation(woki), "within-reach");
+check(
+  "a hopeless-looking gap is its own case",
+  situation(standing([{ slug: "a", name: "A", votes: 900 }, { slug: "woki", name: "WOKI", votes: 60 }], "woki")!),
+  "a-long-way",
+);
+check(
+  "second place with a hair between them is a photo finish",
+  situation(standing([{ slug: "a", name: "A", votes: 60 }, { slug: "woki", name: "WOKI", votes: 58 }], "woki")!),
+  "photo-finish",
+);
+check(
+  "leading with somebody breathing down our neck",
+  situation(standing([{ slug: "woki", name: "WOKI", votes: 60 }, { slug: "a", name: "A", votes: 55 }], "woki")!),
+  "leading-chased",
+);
+/*
+ * More than one line per situation, because a scheduled message that ends the same way twice a
+ * day is one people stop reading. `pick` is injected so this pins the pool rather than the dice.
+ */
+const drawn = new Set(
+  Array.from({ length: 12 }, (_, i) => cheerFor(woki, (n) => i % n)),
+);
+ok(`the pool offers more than one line (${drawn.size} distinct)`, drawn.size > 1, "one line is a rotation of one");
+ok("and every draw is usable", [...drawn].every((line) => usableCheer(line) !== null));
+
 console.log("\na reading that is not current says so:");
 const down = announcement(woki, { ...live, live: false });
 ok("a dead feed is dated in the announcement", down.includes("última lectura"), down);
@@ -223,6 +271,7 @@ const watch = (over: Partial<Watch> = {}): Watch => ({
   endsAt: null,
   last: null,
   announcedToday: 0,
+  recentCheers: [],
   lastRunAt: null,
   lastError: null,
   ...over,
@@ -438,7 +487,17 @@ if (!cfg) {
         `${rows.length} rows parsed — the markup changed, so fix the pattern or drop the claim`,
       );
 
-      const stated = /<strong>(\d+)<\/strong>[\s\S]{0,80}?superar a <b>([^<]+)<\/b>/.exec(html);
+      /*
+       * Anchored on the element that carries the claim, not on the sentence inside it. The first
+       * version matched the Spanish wording ("N votos para superar a X") and broke the day the
+       * board reworded it to "para alcanzar el #2 / Superar a PLUMB" — the check failed loudly,
+       * which was the point, but a pattern that survives a copy edit is strictly better. The
+       * class name is the stable part: if `target-copy` itself goes, the claim really is gone.
+       */
+      const stated =
+        /class="target-copy"[\s\S]{0,400}?<strong>(\d+)<\/strong>[\s\S]{0,400}?<b>([^<]+)<\/b>/.exec(
+          html,
+        );
       const mine = standing(rows, cfg.slug);
 
       if (rows.length >= 2 && mine) {

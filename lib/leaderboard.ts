@@ -424,7 +424,10 @@ export const announcement = (
       ? `Para el *primer puesto*: *${first.toBeat}* votos (${first.name}, ${first.votes}).`
       : "";
 
-  const tail = next && chaser ? `${chaser.name} viene atrás a ${chaser.lead}.` : "";
+  const tail =
+    next && chaser
+      ? `${chaser.name} viene ${chaser.lead} ${chaser.lead === 1 ? "voto" : "votos"} atrás.`
+      : "";
   const url = siteUrl();
 
   /*
@@ -442,10 +445,16 @@ export const announcement = (
   const cheer = (closing && usableCheer(closing)) || cheerFor(standing);
   const link = voteUrl();
 
+  /*
+   * "Voten", not "Votá". The latter is vos — Argentina and Uruguay — and singular besides, so it
+   * was wrong twice over for a group and doubly wrong beside a line written in Limeño. `ustedes`
+   * is how you address a room anywhere in Latin America.
+   */
+
   const blocks = [
     head,
     [gap, toFirst, tail].filter(Boolean).join("\n"),
-    link ? `${cheer}\nVotá acá 👇\n${link}` : cheer,
+    link ? `${cheer}\nVoten acá 👇\n${link}` : cheer,
     tailUrl ?? "",
   ];
   return blocks.filter(Boolean).join("\n\n");

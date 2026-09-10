@@ -201,6 +201,7 @@ export default async function LeaderboardPage() {
                         <>ready — it speaks on the next check where something has moved</>
                       )}
                     </span>
+                    {w.note && <span className="meta">sounds like: {w.note}</span>}
                     {w.lastError && <span className="meta bad">last error: {w.lastError}</span>}
                   </div>
                   <form action={sendNow}>
@@ -343,6 +344,21 @@ export default async function LeaderboardPage() {
             />
             <p className="meta" id="quiet-help">
               Hours, 0–23, wrapping across midnight. Set both the same for none at all.
+            </p>
+
+            <label htmlFor="note">How to sound here</label>
+            <input
+              id="note"
+              name="note"
+              maxLength={300}
+              placeholder="Optional — “peruano, seco, con jerga” or “formal, es un grupo de clientes”"
+              aria-describedby="note-help"
+            />
+            <p className="meta" id="note-help">
+              Read by the turn that writes the closing line, and it counts for more than anything
+              else on this page. Left empty, it copies the register of whatever the bot has
+              already said in this group — which is usually right, and occasionally not what you
+              wanted. The figures never come from that turn.
             </p>
 
             <label htmlFor="endsAt">Stop after</label>

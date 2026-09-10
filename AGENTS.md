@@ -373,6 +373,12 @@ like a simplification opportunity.
   flourish. It is also told not to describe the project: it called one "proyecto anti-terremotos"
   on the first run, which is the same class of failure as a wrong figure and is caught the same
   way — this line may carry enthusiasm and nothing checkable.
+- **A group's register is sampled, and the note overrides it.** `leaderboard_watch.note` is the
+  same idea as `chime_settings.note` and for the same reason: what the bot happens to have said
+  in a room is evidence of how it talks there, and somebody typing "peruano, seco, con jerga" is
+  a decision. Evidence loses to a decision, so the note is placed after the examples and stated
+  as the stronger signal. Measured: the same group goes from "Grupo, sigamos votando 🙌" to
+  "Causa, voten pues, no se hagan los locos 🙌" on that one field.
 - **Variety comes from telling it what it already said, not from a temperature.** Asked the same
   question twice a model answers the same sentence twice: four near-identical lines out of five,
   measured, and two of them identical in one group. The reasoning tiers here do not reliably

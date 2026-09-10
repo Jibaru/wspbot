@@ -473,6 +473,8 @@ export type Watch = {
   onChangeOnly: boolean;
   /** Attach a picture of the board to the message. The figures never come from it. */
   withPicture: boolean;
+  /** How to sound here, in a person's own words. Steers the closing line; empty means no steer. */
+  note: string | null;
   endsAt: Date | null;
   /** What the last announcement said. `null` until one has gone out. */
   last: Snapshot | null;
@@ -503,6 +505,7 @@ type WatchRow = {
   max_per_day: number;
   on_change_only: boolean;
   with_picture: boolean;
+  note: string | null;
   ends_at: Date | null;
   last_position: number | null;
   last_votes: number | null;
@@ -515,7 +518,7 @@ type WatchRow = {
 };
 
 const WATCH_COLUMNS =
-  "chat, chat_name, enabled, cron, quiet_from, quiet_to, max_per_day, on_change_only, with_picture, ends_at, last_position, last_votes, last_gap, announced_day, announced_count, recent_cheers, last_run_at, last_error";
+  "chat, chat_name, enabled, cron, quiet_from, quiet_to, max_per_day, on_change_only, with_picture, note, ends_at, last_position, last_votes, last_gap, announced_day, announced_count, recent_cheers, last_run_at, last_error";
 
 const toWatch = (row: WatchRow, at: Date): Watch => ({
   chat: row.chat,
@@ -527,6 +530,7 @@ const toWatch = (row: WatchRow, at: Date): Watch => ({
   maxPerDay: Number(row.max_per_day),
   onChangeOnly: row.on_change_only,
   withPicture: row.with_picture,
+  note: row.note?.trim() || null,
   endsAt: row.ends_at,
   last:
     row.last_position === null || row.last_votes === null
@@ -573,6 +577,7 @@ export type WatchInput = {
   maxPerDay?: number;
   onChangeOnly?: boolean;
   withPicture?: boolean;
+  note?: string | null;
   endsAt?: Date | null;
 };
 
@@ -588,8 +593,8 @@ export const save = async (input: WatchInput): Promise<void> => {
 
   await query(
     `insert into leaderboard_watch
-       (chat, chat_name, cron, quiet_from, quiet_to, max_per_day, on_change_only, with_picture, ends_at)
-     values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+       (chat, chat_name, cron, quiet_from, quiet_to, max_per_day, on_change_only, with_picture, note, ends_at)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
      on conflict (chat) do update set
        chat_name      = coalesce(excluded.chat_name, leaderboard_watch.chat_name),
        cron           = excluded.cron,
@@ -598,6 +603,7 @@ export const save = async (input: WatchInput): Promise<void> => {
        max_per_day    = excluded.max_per_day,
        on_change_only = excluded.on_change_only,
        with_picture   = excluded.with_picture,
+       note           = excluded.note,
        ends_at        = excluded.ends_at,
        last_error     = null`,
     [
@@ -609,6 +615,7 @@ export const save = async (input: WatchInput): Promise<void> => {
       Math.min(Math.max(input.maxPerDay ?? DEFAULTS.maxPerDay, 1), 48),
       input.onChangeOnly ?? DEFAULTS.onChangeOnly,
       input.withPicture ?? DEFAULTS.withPicture,
+      input.note?.trim() || null,
       input.endsAt ?? null,
     ],
   );

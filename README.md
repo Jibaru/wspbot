@@ -936,7 +936,10 @@ failure that would matter — a number that is almost right.
 **The closing line is the exception, and it proves the rule.** Asking people to vote *is* voice
 rather than arithmetic, and a fixed sentence twice a day is one nobody reads by Wednesday. So a
 model writes that line — shown the bot's own recent messages in that group, so it sounds like the
-same bot people talk to — and it is handed the *shape* of the race and never the numbers. It is
+same bot people talk to — and it is handed the *shape* of the race and never the numbers. Each
+group can also carry a note in your own words (*"peruano, seco, con jerga"*, *"formal, es un
+grupo de clientes"*), which wins over the sampled register when the two disagree: what the bot
+happens to have said in a room is evidence, and a person saying what they want is not. It is
 also told what it has already said there, because asked the same question twice a model answers
 the same sentence twice: measured, four near-identical lines out of five, and six distinct out of
 six once the history is fed back. A line that comes back carrying a digit, a link, a second line
@@ -949,6 +952,7 @@ Restraint again, for the same reason as chime-ins:
 | --- | --- | --- |
 | Only when it moves | on | a place, a vote count or a gap that changed. Off, it sends on every check — which is how a group learns to mute the bot |
 | Attach a picture | on | a screenshot of the board, cut off after the podium when `LEADERBOARD_CROP` says where that is. Off is text only |
+| How to sound here | — | a note per group, in your own words. Steers the closing line and counts for more than the sampled register |
 | How often it looks | every 10 min | a ceiling, not a timer |
 | Outside quiet hours | 23:00–08:00 | the one failure nobody would forgive is a 4am notification |
 | Under the daily cap | 6 | counted in a local day |

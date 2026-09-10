@@ -73,7 +73,7 @@ export const announce = async (
   const moved = leaderboard.movement(watch.last, standing);
   if (!force && watch.onChangeOnly && !moved.changed) return "unchanged";
 
-  const written = await cheer(watch.chat, standing, watch.recentCheers);
+  const written = await cheer(watch.chat, standing, watch.recentCheers, watch.note);
   const text = [moved.headline, leaderboard.announcement(standing, reading, written)]
     .filter((part): part is string => Boolean(part))
     .join("\n");
@@ -141,6 +141,8 @@ const cheer = async (
   standing: leaderboard.Standing,
   /** Lines already used in this group, so the next one is not the fourth copy of the third. */
   already: string[] = [],
+  /** How to sound here, in a person's own words. Overrides the sampled register when they clash. */
+  note: string | null = null,
 ): Promise<string | null> => {
   try {
     const examples = await voiceOf(chat);
@@ -172,6 +174,19 @@ const cheer = async (
           ? ["This is how you talk in this group. Match it:", "", ...examples.map((e) => `- ${e}`)].join("\n")
           : "You have never spoken in this group, so keep it plain, short and warm.",
         "",
+        /*
+         * Placed after the examples and stated as the stronger signal, because the two can
+         * disagree: what the bot happens to have said in a room is evidence of the register,
+         * while this is somebody saying what they actually want. A group whose sampled messages
+         * read neutral gets a neutral line without it, which is right up until a person says
+         * otherwise.
+         */
+        ...(note
+          ? [
+              `How this group wants you to sound, which matters more than the examples above: ${note}`,
+              "",
+            ]
+          : []),
         /*
          * The variety lever, and it does the work a temperature setting would not: asked the same
          * question twice the model answers the same sentence twice — four near-identical lines out

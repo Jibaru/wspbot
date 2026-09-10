@@ -268,6 +268,7 @@ const watch = (over: Partial<Watch> = {}): Watch => ({
   maxPerDay: DEFAULTS.maxPerDay,
   onChangeOnly: true,
   withPicture: true,
+  note: null,
   endsAt: null,
   last: null,
   announcedToday: 0,
@@ -566,6 +567,16 @@ if (!process.env["DATABASE_URL"]) {
     ok("the next minute wins again", await claim(CHECK_CHAT, later));
 
     ok("a bad cron is refused rather than stored", await save({ chat: CHECK_CHAT, cron: "nope" }).then(() => false, () => true));
+
+    /*
+     * The note is what makes one group sound different from the next, so it has to survive the
+     * round trip verbatim — and blank has to come back as absent rather than as an empty steer,
+     * or the prompt is handed a line telling it to sound like nothing in particular.
+     */
+    await save({ chat: CHECK_CHAT, note: "  peruano, seco, con jerga  " });
+    check("the note round-trips, trimmed", (await forChat(CHECK_CHAT))?.note, "peruano, seco, con jerga");
+    await save({ chat: CHECK_CHAT, note: "   " });
+    check("blank comes back as no steer at all", (await forChat(CHECK_CHAT))?.note, null);
 
     /*
      * The snapshot and the daily counter, which share one statement and are the two things a

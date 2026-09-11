@@ -280,7 +280,12 @@ const watch = (over: Partial<Watch> = {}): Watch => ({
 
 console.log("\nwhat counts as movement:");
 check("a first announcement always goes out", movement(null, woki).changed, true);
-check("and it has no headline to compare against", movement(null, woki).headline, null);
+/*
+ * Rising and being passed are both changes and nothing else distinguishes them any more: the
+ * message no longer says which way it moved, so `movement` only answers whether to speak.
+ */
+check("rising is a change", movement({ position: 7, votes: 20, gap: 4 }, woki).changed, true);
+check("being passed is too", movement({ position: 3, votes: 61, gap: 1 }, woki).changed, true);
 check(
   "an unchanged board says nothing",
   movement({ position: 5, votes: 61, gap: 23 }, woki).changed,
@@ -295,16 +300,6 @@ check(
   "more votes at the same place is news",
   movement({ position: 5, votes: 40, gap: 23 }, woki).changed,
   true,
-);
-ok(
-  "rising leads with the direction",
-  movement({ position: 7, votes: 20, gap: 4 }, woki).headline?.includes("Subimos al #5") === true,
-  JSON.stringify(movement({ position: 7, votes: 20, gap: 4 }, woki)),
-);
-ok(
-  "being passed says so plainly",
-  movement({ position: 3, votes: 61, gap: 1 }, woki).headline?.includes("Nos pasaron") === true,
-  JSON.stringify(movement({ position: 3, votes: 61, gap: 1 }, woki)),
 );
 
 console.log("\nwhen a watch holds its tongue:");

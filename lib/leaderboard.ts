@@ -732,35 +732,19 @@ export const markFailed = (chat: string, error: string): Promise<unknown[]> =>
   ]);
 
 /**
- * Has anything happened worth a notification, and what is the headline?
+ * Has anything happened worth a notification?
  *
  * A watch that speaks on every firing is a watch a group mutes, so by default only a real change
- * goes out: the place, the votes, or the size of the gap. The headline is what a person would
- * have said first — *they moved up*, *they got passed* — because the numbers underneath it are
- * identical either way and the direction is the news.
+ * goes out: the place, the votes, or the size of the gap.
+ *
+ * It used to also return a headline — "Subimos al #3 (estábamos #4)" — which read well and was
+ * cut on request: the standing line right underneath already says the place, and a group watching
+ * a vote knows which way it moved without being told twice.
  */
-export const movement = (
-  previous: Snapshot | null,
-  standing: Standing,
-): { changed: boolean; headline: string | null } => {
+export const movement = (previous: Snapshot | null, standing: Standing): { changed: boolean } => {
+  if (!previous) return { changed: true };
+  if (standing.position !== previous.position) return { changed: true };
   const gap = standing.next?.toBeat ?? null;
-
-  if (!previous) return { changed: true, headline: null };
-
-  if (standing.position < previous.position) {
-    return {
-      changed: true,
-      headline: `\u{1F4C8} *Subimos al #${standing.position}* (estábamos #${previous.position}).`,
-    };
-  }
-  if (standing.position > previous.position) {
-    return {
-      changed: true,
-      headline: `\u{1F4C9} *Nos pasaron: vamos #${standing.position}* (estábamos #${previous.position}).`,
-    };
-  }
-  if (standing.me.votes !== previous.votes || gap !== previous.gap) {
-    return { changed: true, headline: null };
-  }
-  return { changed: false, headline: null };
+  if (standing.me.votes !== previous.votes || gap !== previous.gap) return { changed: true };
+  return { changed: false };
 };

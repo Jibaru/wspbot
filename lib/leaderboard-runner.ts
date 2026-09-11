@@ -74,9 +74,7 @@ export const announce = async (
   if (!force && watch.onChangeOnly && !moved.changed) return "unchanged";
 
   const written = await cheer(watch.chat, standing, watch.recentCheers, watch.note);
-  const text = [moved.headline, leaderboard.announcement(standing, reading, written)]
-    .filter((part): part is string => Boolean(part))
-    .join("\n");
+  const text = leaderboard.announcement(standing, reading, written);
 
   /*
    * Best-effort, and in that order deliberately: the figures are the message, so a board that

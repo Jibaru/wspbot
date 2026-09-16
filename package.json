@@ -17,7 +17,6 @@
     "github-check": "tsx --conditions=react-server --env-file=.env scripts/github-check.mts",
     "chime-check": "tsx --conditions=react-server --env-file=.env scripts/chime-check.mts",
     "roadmap-check": "tsx --conditions=react-server --env-file=.env scripts/roadmap-check.mts",
-    "leaderboard-check": "tsx --conditions=react-server --env-file-if-exists=.env scripts/leaderboard-check.mts",
     "features-check": "tsx --conditions=react-server scripts/features-check.mts",
     "wapi-check": "tsx --conditions=react-server --env-file=.env scripts/wapi-check.mts",
     "vendor-wapi-sdk": "node scripts/vendor-wapi-sdk.mjs",

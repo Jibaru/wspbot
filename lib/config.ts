@@ -96,38 +96,6 @@ export const config = {
     return clientId && clientSecret ? { clientId, clientSecret } : null;
   },
 
-  /**
-   * The public vote leaderboard this bot follows, and which project on it is ours.
-   *
-   * Both or neither: a URL with no slug cannot answer "what position are we in", and a slug with
-   * no URL has nothing to read. Null means the feature is switched on but not set up here, which
-   * the dashboard says out loud rather than leaving as a tool that fails when someone asks.
-   */
-  leaderboard: ():
-    | { url: string; slug: string; voteUrl: string | null; cutAfter: string | null }
-    | null => {
-    const url = optional("LEADERBOARD_URL");
-    const slug = optional("LEADERBOARD_SLUG");
-    if (!url || !slug) return null;
-    return {
-      url: url.replace(/\/$/, ""),
-      slug,
-      /*
-       * Where somebody actually casts a vote, which is usually not the board. "Go and vote" with
-       * nowhere to go is a call to action nobody can act on, and the page a board links to is not
-       * derivable from its data — so it is configuration, and absent it the message simply does
-       * not ask.
-       */
-      voteUrl: optional("LEADERBOARD_VOTE_URL") ?? null,
-      /*
-       * A CSS selector saying where the interesting part of the board ends, so the attached
-       * picture can stop after the podium instead of running to the fold. Board-specific by
-       * nature, which is exactly why it is not a constant in the code.
-       */
-      cutAfter: optional("LEADERBOARD_CROP") ?? null,
-    };
-  },
-
   /** Any model your account can reach on the OpenAI Responses API. */
   model: () => optional("BOT_MODEL") ?? "gpt-5.6",
 

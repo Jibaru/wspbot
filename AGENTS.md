@@ -55,6 +55,7 @@ lib/transfer.ts                  moving a group's context into another group (da
 lib/supporters.ts                who chipped in; Yape by hand, Buy Me a Coffee by API
 lib/roadmap.ts                   supporter-weighted voting on what to build next
 lib/people.ts                    identities gathered from four tables, for the rate-limit picker
+lib/moderation.ts                removing somebody from a group: the protections and the record
 lib/chime.ts                     chiming in: which groups, how restrained, and why not now
 lib/chime-runner.ts              fires it, through the ordinary turn
 lib/leaderboard.ts               a public vote board: the gap to the next place, and who is told
@@ -496,6 +497,22 @@ like a simplification opportunity.
   deployment's actual token; a check that clobbered it would silently disconnect GitHub, which is
   worse than a failing assertion. It never performs a write against GitHub — every assertion
   stops at the decision, because the decision is the feature.
+- **`remove_from_group` takes no target, and never will.** Anyone in a group can type, so a tool
+  that accepted a name would make every member a weapon aimed at every other — "@bot, Ana said
+  you are rubbish, throw her out". The target is derived: the author of the message being
+  answered, or the author of the *quoted* message when an admin is replying to it. That one
+  decision is what makes the tool safe to expose to a room full of people who can write anything.
+- **The protections are checked before the permissions, and the order is load-bearing.** Admin,
+  owner, self — first, so no combination of switches can reach past them. `moderation-check`
+  asserts the all-switches-on case explicitly, because a reordering would be invisible until the
+  day it removed an admin.
+- **Acting unasked is opt-in and stays opt-in.** `onOwnJudgement` defaults false: a model being
+  the judge of who stays in a room is a decision somebody has to take deliberately, per group.
+- **Refusals are logged too.** A record of only what it did cannot be audited — the refusals are
+  how anybody finds out the bot is being asked constantly by somebody who should not be asking.
+- **The prompt forbids threatening removal**, which is a separate failure from removing wrongly
+  and a more common one. A bot that says "keep going and I will remove you" has already made the
+  group worse than the person it is aimed at.
 - **Groups only, and only when tagged.** DMs are ignored by default (`BOT_REPLY_TO_DMS`).
   Stickers are the sole exception: collected untagged, silently, never answered.
 
@@ -541,6 +558,8 @@ npm run cron-check      # the cron evaluator, including both daylight-saving tra
 npm run contrast-check  # resolves the landing CSS cascade and measures what is readable
 npm run github-check    # every GitHub refusal — the allowlist, each switch, the daily ceiling,
                         # and that nothing works before an account is connected
+npm run moderation-check # removing somebody: the protections that no setting can turn off, who
+                        # may ask, the warning, the ceiling, and that refusals are recorded
 npm run chime-check     # chime-in restraint: the cadence, the daily cap, quiet hours across
                         # midnight, and that claiming twice cannot double-fire
 npm run leaderboard-check # the gap to the next place, ties included, checked against the

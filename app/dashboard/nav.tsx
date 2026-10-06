@@ -21,6 +21,7 @@ const SECTIONS: { href: string; label: string }[] = [
   { href: "/dashboard/chime", label: "Chime-ins" },
   { href: "/dashboard/leaderboard", label: "Leaderboard" },
   { href: "/dashboard/github", label: "GitHub" },
+  { href: "/dashboard/moderation", label: "Removals" },
   { href: "/dashboard/supporters", label: "Supporters" },
   { href: "/dashboard/roadmap", label: "Roadmap" },
   { href: "/dashboard/move", label: "Move" },

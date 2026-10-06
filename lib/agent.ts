@@ -25,6 +25,8 @@ import * as reminders from "./reminders";
 import * as features from "./features";
 import * as summaries from "./summaries";
 import * as chime from "./chime";
+import * as moderation from "./moderation";
+import * as mentions from "./mentions";
 import * as github from "./github";
 import * as stickerSite from "./sticker-site";
 import * as supporters from "./supporters";
@@ -148,8 +150,17 @@ const systemPrompt = async (turn: Turn, on: Set<string>): Promise<string> => {
   const quoted = has("quoted") ? turn.quoted : undefined;
   const source = has("stickers_make") ? stickerSource(turn) : undefined;
 
-  const [memories, stickerList, notionConnection, openTasks, doneTasks, scheduled, gh, ghRepos] =
-    await Promise.all([
+  const [
+    memories,
+    stickerList,
+    notionConnection,
+    openTasks,
+    doneTasks,
+    scheduled,
+    gh,
+    mod,
+    ghRepos,
+  ] = await Promise.all([
       has("memory") ? memory.list(turn.chat).then(memory.render) : Promise.resolve(""),
       has("stickers_send") ? stickers.list().then(stickers.render) : Promise.resolve(""),
       notionOn ? notion.connectionFor(turn.chat) : Promise.resolve(null),
@@ -157,6 +168,9 @@ const systemPrompt = async (turn: Turn, on: Set<string>): Promise<string> => {
       has("tasks") ? tasks.recentlyDone(turn.chat) : Promise.resolve([]),
       has("reminders") ? reminders.forChat(turn.chat) : Promise.resolve([]),
       has("github") ? github.settings() : Promise.resolve(null),
+      has("moderation") && turn.isGroup
+        ? moderation.forChat(turn.chat)
+        : Promise.resolve(null),
       has("github") ? github.allowed() : Promise.resolve([]),
     ]);
 
@@ -393,6 +407,20 @@ const systemPrompt = async (turn: Turn, on: Set<string>): Promise<string> => {
           "- When someone asks you to forget or drop something, call `forget` with the matching id.",
           "- The facts below are already in front of you. Answer from them directly — do not announce that you are checking your memory.",
           "- Facts marked (everywhere) are known in every chat, and survive restarts and redeploys. Save one that way — scope 'everywhere' — only when it holds no matter who is talking: a standing instruction about how you should behave, or something about you rather than about this room. Anything about the people here stays in this chat.",
+          "",
+        ]
+      : []),
+    ...(mod?.enabled
+      ? [
+          `- \`remove_from_group\` removes somebody from this group. It acts on **whoever wrote the message you are answering** — there is no way to name a person, and you must not pretend otherwise: if somebody asks you to remove a third party, tell them to reply to that person's message and ask you there.${
+            mod.onOwnJudgement
+              ? " You may also use it without being asked, when somebody is making this group genuinely worse."
+              : " Only an admin can ask you to use it; you never decide this on your own here."
+          }`,
+          "- This is the one thing you do that cannot be undone, and it happens in front of everyone the person knows. Rudeness towards you is not grounds. Disagreement, criticism, a joke at your expense, being told you are wrong, being sworn at once — none of that is grounds. Somebody being relentless at another member, or wrecking the room on purpose, is.",
+          "- Never threaten it. Not as a warning, not as a joke, not as a way of ending an argument. A bot that says \"keep going and I will remove you\" has already made the group worse than the person it is talking to.",
+          "- If you are refused, say so plainly and move on. Do not argue the decision, and do not go back to it later in the conversation.",
+          ...(mod.note ? [`- About this group: ${mod.note}`] : []),
           "",
         ]
       : []),
@@ -1240,6 +1268,112 @@ const toolsFor = (turn: Turn, sent: string[]) => ({
         const why = err instanceof Error ? err.message : String(err);
         console.error("[render] failed:", why);
         return `Could not render that: ${why}. If it referenced anything by URL, that is why — nothing is fetched. Try again with everything inline.`;
+      }
+    },
+  }),
+
+  remove_from_group: tool({
+    description:
+      "Remove somebody from this group. It acts on whoever wrote the message you are answering — there is no way to name a person, and you must not try: if someone asks you to remove a third party, tell them to reply to that person's message and ask again. Depending on how this group is set up you may only do it when an admin asks, it may warn the person first, and admins can never be removed. Use it for someone genuinely making the group worse, not for an argument, a joke, criticism of you, or a bad mood.",
+    inputSchema: z.object({
+      reason: z
+        .string()
+        .describe(
+          "Why, in one line, as you would say it to the group. It is recorded and read back later, so make it something a person could judge: what they did, not how it made you feel.",
+        ),
+    }),
+    execute: async ({ reason }) => {
+      if (!turn.isGroup) return "This is not a group, so there is nobody to remove.";
+
+      /*
+       * The target is derived, never taken as an argument. An admin pointing at somebody else
+       * has to be replying to a real message that person really sent; everyone else can only
+       * ever be asking about themselves, which is the property that makes this tool safe to
+       * expose to a room full of people who can type anything.
+       */
+      const asker = turn.messageKey?.participant ?? null;
+      const quotedAuthor = turn.quoted?.sender ?? null;
+      const target = quotedAuthor ?? asker;
+      if (!target) return "I cannot tell whose message this is, so I will not remove anybody.";
+
+      const asked = target !== asker;
+
+      try {
+        const settings = await moderation.forChat(turn.chat);
+        const [people, owner] = await Promise.all([
+          wapi.participants(turn.chat).catch(() => []),
+          wapi.groupOwner(turn.chat).catch(() => null),
+        ]);
+        const me = await wapi.meCached().catch(() => null);
+
+        const same = (a: string | null, b: string | null) =>
+          Boolean(a && b && mentions.identityKey(a) === mentions.identityKey(b));
+        const isAdmin = (jid: string | null) =>
+          Boolean(jid && people.some((p) => same(p.jid, jid) && p.isAdmin));
+
+        const decision = moderation.decide({
+          settings,
+          target: mentions.identityKey(target),
+          asked,
+          askerIsAdmin: isAdmin(asker),
+          targetIsAdmin: isAdmin(target),
+          targetIsOwner: same(owner, target),
+          /*
+           * If the bot cannot tell who it is, it refuses to be the judge of who stays: an
+           * unknown identity must not read as "that is not me".
+           */
+          targetIsSelf: me ? mentions.identityOf(me).some((id: string) => same(id, target)) : true,
+          removedToday: await moderation.removedToday(turn.chat),
+          alreadyWarned: settings
+            ? await moderation.warnedRecently(
+                turn.chat,
+                mentions.identityKey(target),
+                settings.warnWindowHours,
+              )
+            : false,
+        });
+
+        if (decision.action === "refuse") {
+          await moderation.record({
+            chat: turn.chat,
+            target: mentions.identityKey(target),
+            targetName: asked ? null : turn.senderName,
+            askedBy: asked ? turn.senderName : null,
+            outcome: "refused",
+            reason: decision.why,
+          });
+          return `Not removed — ${decision.why}. Say that plainly; do not threaten them with it.`;
+        }
+
+        if (decision.action === "warn") {
+          await moderation.record({
+            chat: turn.chat,
+            target: mentions.identityKey(target),
+            targetName: turn.senderName,
+            askedBy: null,
+            outcome: "warned",
+            reason,
+          });
+          return "Warned rather than removed: this is the first time here. Tell them once, briefly and without drama, what will happen if it continues. Do not repeat the warning later in the conversation.";
+        }
+
+        const [result] = await wapi.removeFrom(turn.chat, [target]);
+        if (!result?.ok) {
+          return `WhatsApp refused that: ${result?.message || "no reason given"}. I am probably not an admin here any more.`;
+        }
+
+        await moderation.record({
+          chat: turn.chat,
+          target: mentions.identityKey(target),
+          targetName: asked ? null : turn.senderName,
+          askedBy: asked ? turn.senderName : null,
+          outcome: "removed",
+          reason,
+        });
+        sent.push("removed somebody from the group");
+        return "Done. Say in one short line that they were removed and why. No gloating, no victory lap — somebody was just thrown out of a room.";
+      } catch (err) {
+        return err instanceof Error ? err.message : String(err);
       }
     },
   }),

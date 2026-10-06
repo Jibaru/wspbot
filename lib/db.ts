@@ -291,6 +291,43 @@ const migrate = async (): Promise<void> => {
     create index if not exists chimes_chat_day_idx on chimes (chat, day);
 
     /*
+     * Removing somebody from a group: which groups allow it, and how reluctantly. The only
+     * irreversible thing the bot does, so everything here is a reason not to — on_own_judgement
+     * is off by default, a warning comes first, and the ceiling is small.
+     */
+    create table if not exists moderation_settings (
+      chat              text primary key,
+      chat_name         text,
+      enabled           boolean     not null default true,
+      -- An admin may ask it to remove the author of a message they are replying to.
+      on_request        boolean     not null default true,
+      -- It may act with nobody asking. Off by default: this is an opt-in, never a default.
+      on_own_judgement  boolean     not null default false,
+      warn_first        boolean     not null default true,
+      warn_window_hours integer     not null default 24,
+      max_per_day       integer     not null default 2,
+      note              text,
+      created_at        timestamptz not null default now()
+    );
+
+    /*
+     * Every warning, removal and refusal. "The bot removed somebody and nobody knows why" is how
+     * this feature gets switched off for good, so the reason is kept with it.
+     */
+    create table if not exists moderation_log (
+      id          bigserial primary key,
+      at          timestamptz not null default now(),
+      chat        text        not null,
+      target      text        not null,
+      target_name text,
+      asked_by    text,
+      -- warned | removed | refused
+      outcome     text        not null,
+      reason      text
+    );
+    create index if not exists moderation_log_chat_idx on moderation_log (chat, at desc);
+
+    /*
      * GitHub, as one account this deployment acts as. One row, always id 1: two rows would mean
      * every call site had to answer "which account?" for no gain.
      *

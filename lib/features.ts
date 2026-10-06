@@ -230,6 +230,14 @@ export const FEATURES: Feature[] = [
     ],
   },
   {
+    key: "moderation",
+    title: "Removes people from a group",
+    detail:
+      "In groups set up for it, and only there, it can remove somebody — on an admin's request, or on its own if that has been allowed, when someone is being abusive towards it. It never removes admins or the owner, it warns before it removes, there is a small daily ceiling, and every warning and removal is recorded with its reason. It can only act on whoever wrote the message it is answering: naming somebody in text does nothing.",
+    claim: "remove someone from a group, where an admin has allowed it",
+    tools: ["remove_from_group"],
+  },
+  {
     key: "chime",
     title: "Chimes in on its own",
     detail:

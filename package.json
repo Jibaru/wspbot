@@ -15,6 +15,7 @@
     "transfer-check": "tsx --conditions=react-server --env-file=.env scripts/transfer-check.mts",
     "supporters-check": "tsx --conditions=react-server --env-file=.env scripts/supporters-check.mts",
     "github-check": "tsx --conditions=react-server --env-file=.env scripts/github-check.mts",
+    "moderation-check": "tsx --conditions=react-server --env-file=.env scripts/moderation-check.mts",
     "chime-check": "tsx --conditions=react-server --env-file=.env scripts/chime-check.mts",
     "roadmap-check": "tsx --conditions=react-server --env-file=.env scripts/roadmap-check.mts",
     "leaderboard-check": "tsx --conditions=react-server --env-file-if-exists=.env scripts/leaderboard-check.mts",

@@ -184,6 +184,47 @@ export const wapi = {
       );
   },
 
+  /**
+   * Who is in a group, and which of them are admins.
+   *
+   * Read before any removal, never cached: admin status is exactly the fact that changes between
+   * somebody being made a moderator and the bot deciding they are fair game.
+   */
+  async participants(
+    groupJid: string,
+  ): Promise<{ jid: string; isAdmin: boolean }[]> {
+    const all = await client().groups.participants.list(groupJid);
+    return all.map((p) => ({
+      // The shape is keyed on `id` here and on `jid` in the metadata route; both appear.
+      jid: p.jid ?? p.id,
+      isAdmin: Boolean(p.isAdmin || p.isSuperAdmin || p.admin),
+    }));
+  },
+
+  /** The group's owner, who is not removable whatever their admin flag says. */
+  async groupOwner(groupJid: string): Promise<string | null> {
+    const meta = await client().groups.metadata(groupJid);
+    return meta.owner ?? null;
+  },
+
+  /**
+   * Remove people from a group. Returns per-JID results: some can fail while others succeed,
+   * so the caller has to read them rather than assume a 200 meant it happened.
+   */
+  async removeFrom(
+    groupJid: string,
+    jids: string[],
+  ): Promise<{ jid: string; ok: boolean; message: string }[]> {
+    const rows = await client().groups.participants.remove(groupJid, jids);
+    return (rows ?? []).map((r) => ({
+      jid: r.jid,
+      // Per participant, not per request: a 200 on the call says nothing about whether this
+      // person actually left. WhatsApp refuses plenty of removals one at a time.
+      ok: Number(r.status) === 200,
+      message: r.message ?? "",
+    }));
+  },
+
   /** Blue ticks. Best-effort — a failure here must never stop a reply. */
   async markRead(
     key: Parameters<WapiClient["messages"]["markRead"]>[0],

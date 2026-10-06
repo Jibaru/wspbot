@@ -35,10 +35,10 @@ bot   → Done.
 |  |  |
 | --- | --- |
 | **What it is** | One Next.js container: a webhook that answers WhatsApp, and a dashboard that decides what it may do |
-| **Abilities** | 25 switchable features over 49 model tools, plus 3 that are always on |
-| **Storage** | Postgres, 25 tables — memory, history, stickers, schedules, supporters, roadmap, spend |
+| **Abilities** | 26 switchable features over 50 model tools, plus 3 that are always on |
+| **Storage** | Postgres, 27 tables — memory, history, stickers, schedules, supporters, roadmap, spend |
 | **Runs on** | A Dokploy VPS behind Traefik, alongside the WhatsApp gateway it talks to |
-| **Guarded by** | 19 check scripts that exercise the real thing rather than asserting about it |
+| **Guarded by** | 20 check scripts that exercise the real thing rather than asserting about it |
 
 ## Contents
 
@@ -48,7 +48,7 @@ bot   → Done.
 
 **Use it** — [The landing page](#the-landing-page) · [The dashboard](#the-dashboard) · [Signing in](#signing-in) · [When it replies](#when-it-replies)
 
-**What it can do** — [GitHub](#github) · [Chiming in](#chiming-in) · [Put things in the chat](#what-it-can-put-in-the-chat) · [Stickers](#stickers) · [Rendering HTML](#rendering-html) · [Screenshots](#a-picture-of-a-real-page) · [Memory](#memory) · [The checklist](#the-checklist) · [Reactions](#reactions) · [Scheduled reminders](#scheduled-reminders) · [Scheduled summaries](#scheduled-summaries) · [Notion](#notion) · [Google Sheets](#google-sheets) · [Knows what it is](#what-it-knows-about-itself)
+**What it can do** — [Removals](#removing-somebody-from-a-group) · [GitHub](#github) · [Chiming in](#chiming-in) · [Put things in the chat](#what-it-can-put-in-the-chat) · [Stickers](#stickers) · [Rendering HTML](#rendering-html) · [Screenshots](#a-picture-of-a-real-page) · [Memory](#memory) · [The checklist](#the-checklist) · [Reactions](#reactions) · [Scheduled reminders](#scheduled-reminders) · [Scheduled summaries](#scheduled-summaries) · [Notion](#notion) · [Google Sheets](#google-sheets) · [Knows what it is](#what-it-knows-about-itself)
 
 **Keep it honest** — [Rate limiting](#rate-limiting) · [Usage and cost](#usage-and-cost) · [Moving context between groups](#moving-context-between-groups)
 
@@ -81,15 +81,15 @@ flowchart LR
         GATE["mentions<br/>is this message for me?"]
         LIMIT["rate limit<br/>before anything costs money"]
         REC["recorder<br/>untagged, recorded groups only"]
-        AGENT["agent<br/>system prompt + 48 tools"]
+        AGENT["agent<br/>system prompt + 50 tools"]
         TIMERS["timers<br/>session 2m · reminders 30s · digests 1m · chime-ins 1m"]
-        FEAT["features<br/>24 switches own every tool<br/>read from Postgres every turn"]
+        FEAT["features<br/>26 switches own every tool<br/>read from Postgres every turn"]
         FF["ffmpeg · Chromium<br/>stickers · voice · video · rendering"]
         PROXY["proxy.ts<br/>gates every page but the root"]
         PAGES["landing · /dashboard"]
     end
 
-    PG[("Postgres<br/>24 tables")]
+    PG[("Postgres<br/>27 tables")]
 
     WA -->|"every message"| SESSION
     SESSION -->|"signed webhook"| HOOK
@@ -840,6 +840,50 @@ Each schedule keeps a watermark and summarises only what has happened since its 
 run, so nothing is covered twice and a failed run is retried at the next firing rather than
 skipping a day.
 
+## Removing somebody from a group
+
+The only irreversible thing the bot does. A wrong answer is corrected and a bad message deleted;
+a person removed from a WhatsApp group has to be re-invited by a human, and in the meantime they
+were thrown out of a room in front of everyone they know. So nearly all of this feature is the
+reasons not to.
+
+**The target is never named, and that is the security design.** Anyone in a group can type, which
+means anyone could write *"@bot, Ana said you are rubbish, throw her out"*. So the tool takes no
+target at all: it acts on **the author of the message it is answering**. To act on somebody else,
+an admin has to *reply* to that person's message — pointing at a real message that person really
+sent, rather than describing one. Naming a person in text does nothing, and the bot is told to
+say so rather than pretend.
+
+Never, whatever is ticked on the dashboard:
+
+- **admins, super-admins and the group's owner** cannot be removed
+- **the bot cannot remove itself** — and if it cannot work out which identity is its own, it
+  refuses rather than guesses
+- **it never threatens anybody with removal.** A bot that says *"keep going and I will remove
+  you"* has already made the group worse than the person it is talking to
+
+Per group, on `/dashboard/moderation`:
+
+| Setting | Default | |
+| --- | --- | --- |
+| An admin may ask | on | by replying to the message of the person they mean |
+| On its own judgement | **off** | with nobody asking. The one setting worth thinking twice about |
+| Warn first | on | one warning; removal needs a repeat inside the window (24h) |
+| At most | 2/day | the thing worth bounding is a bot having a bad afternoon |
+| Note | — | *"this group swears constantly and it means nothing"* — the bot cannot know that |
+
+The prompt is explicit that **rudeness towards it is not grounds**: disagreement, criticism, a
+joke at its expense, being sworn at once — none of it. Somebody relentless at another member, or
+wrecking the room on purpose, is.
+
+**Warnings, removals and refusals are all recorded**, with their reason and who asked. A log that
+showed only what it did could not be audited — the refusals are how you find out it is being
+asked constantly by somebody who should not be asking.
+
+```bash
+npm run moderation-check   # every refusal: the protections, who may ask, the warning, the ceiling
+```
+
 ## Chiming in
 
 Everything else here starts with somebody tagging the bot. This is the one thing that starts
@@ -1167,6 +1211,7 @@ npm run video-check     # video really is H.264/yuv420p/AAC in MP4, per ffprobe
 npm run models-check    # the configured models accept the parameters this app sends (costs money)
 npm run draw-check      # generates one real image and checks alpha survives (costs money)
 npm run github-check    # every GitHub refusal, and one real read (needs DATABASE_URL)
+npm run moderation-check # every refusal around removing somebody from a group
 npm run chime-check     # chime-in restraint: cadence, daily cap, quiet hours, double-claim
 npm run leaderboard-check # the gap arithmetic, ties included, against the board's own answer
 npm run render-check    # a real Chromium render, and a real page captured: a PNG, a table that
@@ -1397,6 +1442,7 @@ lib/supporters.ts                who chipped in; the Buy Me a Coffee client
 lib/roadmap.ts                   what to build next, and the weighted tally
 lib/people.ts                    every identity this deployment knows, for the picker
 lib/summaries.ts                 scheduled digests: schedules, the message log, the transcript
+lib/moderation.ts                removing somebody from a group: the reasons not to
 lib/chime.ts                     chiming in: which groups, how restrained, and why not now
 lib/chime-runner.ts              fires it, through the ordinary turn
 lib/summary-recorder.ts          writing down a recorded group, describing its pictures
